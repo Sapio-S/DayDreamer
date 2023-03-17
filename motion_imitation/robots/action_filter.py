@@ -41,7 +41,7 @@ from scipy.signal import butter
 
 ACTION_FILTER_ORDER = 2
 ACTION_FILTER_LOW_CUT = 0.0
-ACTION_FILTER_HIGH_CUT = 1.5
+ACTION_FILTER_HIGH_CUT = 4.0
 
 class ActionFilter(object):
   """Implements a generic lowpass or bandpass action filter."""
@@ -152,7 +152,6 @@ class ActionFilterButter(ActionFilter):
       order: filter order
       num_joints: robot DOF
     """
-    # highcut = [3.0]
     self.lowcut = ([float(x) for x in lowcut]
                    if lowcut is not None else [ACTION_FILTER_LOW_CUT])
     self.highcut = ([float(x) for x in highcut]
@@ -160,6 +159,7 @@ class ActionFilterButter(ActionFilter):
     if len(self.lowcut) != len(self.highcut):
       raise ValueError('Number of lowcut and highcut filter values should '
                        'be the same')
+
     if sampling_rate is None:
       raise ValueError('sampling_rate should be provided.')
 

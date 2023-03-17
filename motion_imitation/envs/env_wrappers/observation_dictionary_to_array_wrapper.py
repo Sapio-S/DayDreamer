@@ -61,5 +61,5 @@ class ObservationDictionaryToArrayWrapper(gym.Env):
     observation_dict, reward, done, _ = self._gym_env.step(action)
     return self._flatten_observation(observation_dict), reward, done, _
 
-  def render(self, mode='rgb_array'):
+  def render(self, mode='human'):
     return self._gym_env.render(mode)

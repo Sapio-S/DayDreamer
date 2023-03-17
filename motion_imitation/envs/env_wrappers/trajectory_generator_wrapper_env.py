@@ -86,6 +86,6 @@ class TrajectoryGeneratorWrapperEnv(object):
     new_action = self._trajectory_generator.get_action(
         self._gym_env.robot.GetTimeSinceReset(), action)
 
-    original_observation, reward, done, infos = self._gym_env.step(new_action)
+    original_observation, reward, done, _ = self._gym_env.step(new_action)
 
-    return self._modify_observation(original_observation), reward, done, infos
+    return self._modify_observation(original_observation), reward, done, _

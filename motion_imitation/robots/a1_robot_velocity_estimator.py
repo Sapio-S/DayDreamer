@@ -48,11 +48,11 @@ class VelocityEstimator:
 
     self._window_size = moving_window_filter_size
     self.moving_window_filter_x = MovingWindowFilter(
-       window_size=self._window_size)
+        window_size=self._window_size)
     self.moving_window_filter_y = MovingWindowFilter(
-       window_size=self._window_size)
+        window_size=self._window_size)
     self.moving_window_filter_z = MovingWindowFilter(
-       window_size=self._window_size)
+        window_size=self._window_size)
     self._estimated_velocity = np.zeros(3)
     self._last_timestamp = 0
 
@@ -60,26 +60,26 @@ class VelocityEstimator:
     self.filter.x = np.zeros(3)
     self.filter.P = np.eye(3) * self._initial_variance
     self.moving_window_filter_x = MovingWindowFilter(
-       window_size=self._window_size)
+        window_size=self._window_size)
     self.moving_window_filter_y = MovingWindowFilter(
-       window_size=self._window_size)
+        window_size=self._window_size)
     self.moving_window_filter_z = MovingWindowFilter(
-       window_size=self._window_size)
+        window_size=self._window_size)
     self._last_timestamp = 0
 
-  def _compute_delta_time(self, current_time):
+  def _compute_delta_time(self, robot_state):
     if self._last_timestamp == 0.:
       # First timestamp received, return an estimated delta_time.
       delta_time_s = self.robot.time_step
     else:
-      delta_time_s = current_time - self._last_timestamp
-    self._last_timestamp = current_time
+      delta_time_s = (robot_state.tick - self._last_timestamp) / 1000.
+    self._last_timestamp = robot_state.tick
     return delta_time_s
 
-  def update(self, current_time):
+  def update(self, robot_state):
     """Propagate current state estimate with new accelerometer reading."""
-    delta_time_s = self._compute_delta_time(current_time)
-    sensor_acc = self.robot.GetBaseAcceleration()
+    delta_time_s = self._compute_delta_time(robot_state)
+    sensor_acc = np.array(robot_state.imu.accelerometer)
     base_orientation = self.robot.GetBaseOrientation()
     rot_mat = self.robot.pybullet_client.getMatrixFromQuaternion(
         base_orientation)
@@ -94,8 +94,8 @@ class VelocityEstimator:
       if foot_contact[leg_id]:
         jacobian = self.robot.ComputeJacobian(leg_id)
         # Only pick the jacobian related to joint motors
-        joint_velocities = self.robot.GetMotorVelocities()[leg_id *
-                                                           3:(leg_id + 1) * 3]
+        joint_velocities = self.robot.motor_velocities[leg_id *
+                                                       3:(leg_id + 1) * 3]
         leg_velocity_in_base_frame = jacobian.dot(joint_velocities)
         base_velocity_in_base_frame = -leg_velocity_in_base_frame[:3]
         observed_velocities.append(rot_mat.dot(base_velocity_in_base_frame))

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A simple locomotion task and termination condition."""
+"""A simple locomotion taskand termination condition."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +30,6 @@ import os
 import numpy as np
 
 from motion_imitation.envs.env_wrappers import imitation_terminal_conditions
-from motion_imitation.robots import a1
 from motion_imitation.utilities import pose3d
 from motion_imitation.utilities import motion_data
 from motion_imitation.utilities import motion_util
@@ -41,9 +40,8 @@ class ImitationTask(object):
   """Imitation reference motion task."""
 
   def __init__(self,
-               real_robot=False,
                weight=1.0,
-               terminal_conditions=(imitation_terminal_conditions.imitation_terminal_condition,),
+               terminal_condition=imitation_terminal_conditions.imitation_terminal_condition,
                ref_motion_filenames=None,
                enable_cycle_sync=True,
                clip_velocity=None,
@@ -70,11 +68,9 @@ class ImitationTask(object):
     """Initializes the task.
 
     Args:
-      real_robot: Boolean indicating whether this is running in the real world
-        or in simulation.
       weight: Float. The scaling factor for the reward.
-      terminal_conditions: Callable object or function. Determines if the task
-        is done.
+      terminal_condition: Callable object or function. Determines if the task is
+        done.
       ref_motion_filenames: List of files containing reference motion data.
       enable_cycle_sync: Boolean indicating if the root of the reference motion
         should be synchronized with the root of the simulated robot at the start
@@ -116,9 +112,8 @@ class ImitationTask(object):
         to the target observations [base rotation std, base position std].
       draw_ref_model_alpha: Color transparency for drawing the reference model.
     """
-    self._using_real_robot = real_robot
     self._weight = weight
-    self._terminal_conditions = terminal_conditions
+    self._terminal_condition = terminal_condition
     self._last_base_position = None
     self._clip_velocity = clip_velocity
     self._action_history_sensor = None
@@ -126,8 +121,6 @@ class ImitationTask(object):
 
     assert ref_motion_filenames is not None
     self._ref_state_init_prob = ref_state_init_prob
-    if self._using_real_robot:
-      self._ref_state_init_prob = 0
     self._enable_rand_init_time = enable_rand_init_time
     self._warmup_time = warmup_time
     self._curr_episode_warmup = False
@@ -171,6 +164,7 @@ class ImitationTask(object):
     self._end_effector_height_err_scale = end_effector_height_err_scale
     self._root_pose_err_scale = root_pose_err_scale
     self._root_velocity_err_scale = root_velocity_err_scale
+
     return
 
   def __call__(self, env):
@@ -207,8 +201,7 @@ class ImitationTask(object):
       rand_val = self._rand_uniform(0.0, 1.0)
       perturb_state = rand_val < self._perturb_init_state_prob
 
-    if ref_state_init:
-      self._sync_sim_model(perturb_state)
+    self._sync_sim_model(perturb_state)
 
     return
 
@@ -224,7 +217,7 @@ class ImitationTask(object):
   def done(self, env):
     """Checks if the episode is over."""
     del env
-    done = any([done_fn(self._env) for done_fn in self._terminal_conditions])
+    done = self._terminal_condition(self._env)
 
     return done
 
@@ -243,6 +236,10 @@ class ImitationTask(object):
       Number of target frames.
     """
     return len(self._tar_frame_steps)
+
+  def get_ref_model(self):
+    """Get the reference simulated model used for the reference motion."""
+    return self._ref_model
 
   def is_motion_over(self):
     """Checks if the current reference motion is over.
@@ -279,7 +276,7 @@ class ImitationTask(object):
     motion = self.get_active_motion()
 
     robot = self._env.robot
-    ref_base_pos = self.get_ref_base_position()
+    ref_base_pos = self._get_ref_base_position()
     sim_base_rot = np.array(robot.GetBaseOrientation())
 
     heading = motion_util.calc_heading(sim_base_rot)
@@ -344,10 +341,6 @@ class ImitationTask(object):
 
     return low, high
 
-  @property
-  def ref_state_init_prob(self):
-    return self._ref_state_init_prob
-
   def set_ref_state_init_prob(self, prob):
     self._ref_state_init_prob = prob
     return
@@ -371,60 +364,75 @@ class ImitationTask(object):
     return reward * self._weight
 
   def _calc_reward_pose(self):
-    """Get the reward for matching joint angles."""
-    ref_joint_angles = self.get_active_motion().get_frame_joints(self._ref_pose)
-    robot_joint_angles = self._env.robot.GetMotorAngles()
-    angle_err = robot_joint_angles - ref_joint_angles
-    return np.exp(-self._pose_err_scale * angle_err.dot(angle_err))
-
-  def _calc_reward_velocity(self):
-    """Get the reward for matching joint velocities."""
-    ref_vels = self.get_active_motion().get_frame_joints_vel(self._ref_vel)
-    robot_vels = self._env.robot.GetMotorVelocities()
-    vel_err = robot_vels - ref_vels
-    return np.exp(-self._velocity_err_scale * vel_err.dot(vel_err))
-
-  def _calc_reward_end_effector(self):
-    """Get the end effector reward."""
-    if issubclass(self._env.robot_class, a1.A1):
-      return self._calc_reward_end_effector_A1()
-    if self._using_real_robot:
-      raise NotImplementedError(
-          "End effector positions unknown for real robots other than A1")
-    return self._calc_reward_end_effector_sim()
-
-  def _calc_reward_end_effector_A1(self):
-    """Get the end effector reward for sim or real A1 robot."""
-    ref_joint_angles = self.get_active_motion().get_frame_joints(self._ref_pose)
-    rel_feet_pos_ref = a1.foot_positions_in_base_frame(ref_joint_angles)
-    rel_feet_pos_robot = self._env.robot.GetFootPositionsInBaseFrame()
-    end_eff_err = 0
-    for rel_foot_pos_ref, rel_foot_pos_robot in zip(rel_feet_pos_ref,
-                                                    rel_feet_pos_robot):
-      rel_foot_pos_diff = rel_foot_pos_ref - rel_foot_pos_robot
-      end_eff_err += rel_foot_pos_diff[0]**2 + rel_foot_pos_diff[1]**2
-      foot_height_ref = pose3d.PoseTransformPoint(
-          point=rel_foot_pos_ref,
-          position=self.get_ref_base_position(),
-          quat=self.get_ref_base_rotation())[2]
-      foot_height_robot = pose3d.PoseTransformPoint(
-          point=rel_foot_pos_robot,
-          position=self._env.robot.GetBasePosition(),
-          quat=self._env.robot.GetBaseOrientation())[2]
-      end_eff_err += self._end_effector_height_err_scale * (
-          foot_height_ref - foot_height_robot)**2
-    return np.exp(-self._end_effector_err_scale * end_eff_err)
-
-  def _calc_reward_end_effector_sim(self):
-    """Get the end effector reward using positions from pybullet."""
+    """Get the pose reward."""
     env = self._env
     robot = env.robot
     sim_model = robot.quadruped
     ref_model = self._ref_model
     pyb = self._get_pybullet_client()
 
-    root_pos_ref = self.get_ref_base_position()
-    root_rot_ref = self.get_ref_base_rotation()
+    pose_err = 0.0
+    num_joints = self._get_num_joints()
+
+    for j in range(num_joints):
+      j_state_ref = pyb.getJointStateMultiDof(ref_model, j)
+      j_state_sim = pyb.getJointStateMultiDof(sim_model, j)
+      j_pose_ref = np.array(j_state_ref[0])
+      j_pose_sim = np.array(j_state_sim[0])
+
+      j_size_ref = len(j_pose_ref)
+      j_size_sim = len(j_pose_sim)
+
+      if (j_size_ref > 0):
+        assert (j_size_ref == j_size_sim)
+        j_pose_diff = j_pose_ref - j_pose_sim
+        j_pose_err = j_pose_diff.dot(j_pose_diff)
+        pose_err += j_pose_err
+
+    pose_reward = np.exp(-self._pose_err_scale * pose_err)
+
+    return pose_reward
+
+  def _calc_reward_velocity(self):
+    """Get the velocity reward."""
+    env = self._env
+    robot = env.robot
+    sim_model = robot.quadruped
+    ref_model = self._ref_model
+    pyb = self._get_pybullet_client()
+
+    vel_err = 0.0
+    num_joints = self._get_num_joints()
+
+    for j in range(num_joints):
+      j_state_ref = pyb.getJointStateMultiDof(ref_model, j)
+      j_state_sim = pyb.getJointStateMultiDof(sim_model, j)
+      j_vel_ref = np.array(j_state_ref[1])
+      j_vel_sim = np.array(j_state_sim[1])
+
+      j_size_ref = len(j_vel_ref)
+      j_size_sim = len(j_vel_sim)
+
+      if (j_size_ref > 0):
+        assert (j_size_sim == j_size_ref)
+        j_vel_diff = j_vel_ref - j_vel_sim
+        j_vel_err = j_vel_diff.dot(j_vel_diff)
+        vel_err += j_vel_err
+
+    vel_reward = np.exp(-self._velocity_err_scale * vel_err)
+
+    return vel_reward
+
+  def _calc_reward_end_effector(self):
+    """Get the end effector reward."""
+    env = self._env
+    robot = env.robot
+    sim_model = robot.quadruped
+    ref_model = self._ref_model
+    pyb = self._get_pybullet_client()
+
+    root_pos_ref = self._get_ref_base_position()
+    root_rot_ref = self._get_ref_base_rotation()
     root_pos_sim = self._get_sim_base_position()
     root_rot_sim = self._get_sim_base_rotation()
 
@@ -462,23 +470,23 @@ class ImitationTask(object):
             height_err_scale * end_pos_diff_height * end_pos_diff_height)
 
         end_eff_err += end_pos_err
+
     end_effector_reward = np.exp(-self._end_effector_err_scale * end_eff_err)
 
     return end_effector_reward
 
   def _calc_reward_root_pose(self):
     """Get the root pose reward."""
-    root_pos_ref = self.get_ref_base_position()
-    root_rot_ref = self.get_ref_base_rotation()
-    root_pos_robot = self._env.robot.GetBasePosition()
-    root_rot_robot = self._env.robot.GetBaseOrientation()
+    root_pos_ref = self._get_ref_base_position()
+    root_rot_ref = self._get_ref_base_rotation()
+    root_pos_sim = self._get_sim_base_position()
+    root_rot_sim = self._get_sim_base_rotation()
 
-    root_pos_diff = root_pos_ref - root_pos_robot
+    root_pos_diff = root_pos_ref - root_pos_sim
     root_pos_err = root_pos_diff.dot(root_pos_diff)
 
     root_rot_diff = transformations.quaternion_multiply(
-        root_rot_ref, transformations.quaternion_conjugate(root_rot_robot))
-    root_rot_diff /= np.linalg.norm(root_rot_diff)
+        root_rot_ref, transformations.quaternion_conjugate(root_rot_sim))
     _, root_rot_diff_angle = pose3d.QuaternionToAxisAngle(root_rot_diff)
     root_rot_diff_angle = motion_util.normalize_rotation_angle(
         root_rot_diff_angle)
@@ -491,18 +499,26 @@ class ImitationTask(object):
 
   def _calc_reward_root_velocity(self):
     """Get the root velocity reward."""
-    ref_lin_vel = self.get_active_motion().get_frame_root_vel(self._ref_vel)
-    ref_ang_vel = self.get_active_motion().get_frame_root_ang_vel(self._ref_vel)
-    robot_lin_vel = self._env.robot.GetBaseVelocity()
-    robot_ang_vel = self._env.robot.GetBaseRollPitchYawRate()
+    env = self._env
+    robot = env.robot
+    sim_model = robot.quadruped
+    ref_model = self._ref_model
+    pyb = self._get_pybullet_client()
 
-    lin_vel_diff = ref_lin_vel - robot_lin_vel
-    lin_vel_err = lin_vel_diff.dot(lin_vel_diff)
+    root_vel_ref, root_ang_vel_ref = pyb.getBaseVelocity(ref_model)
+    root_vel_sim, root_ang_vel_sim = pyb.getBaseVelocity(sim_model)
+    root_vel_ref = np.array(root_vel_ref)
+    root_ang_vel_ref = np.array(root_ang_vel_ref)
+    root_vel_sim = np.array(root_vel_sim)
+    root_ang_vel_sim = np.array(root_ang_vel_sim)
 
-    ang_vel_diff = ref_ang_vel - robot_ang_vel
-    ang_vel_err = ang_vel_diff.dot(ang_vel_diff)
+    root_vel_diff = root_vel_ref - root_vel_sim
+    root_vel_err = root_vel_diff.dot(root_vel_diff)
 
-    root_velocity_err = lin_vel_err + 0.1 * ang_vel_err
+    root_ang_vel_diff = root_ang_vel_ref - root_ang_vel_sim
+    root_ang_vel_err = root_ang_vel_diff.dot(root_ang_vel_diff)
+
+    root_velocity_err = root_vel_err + 0.1 * root_ang_vel_err
     root_velocity_reward = np.exp(-self._root_velocity_err_scale *
                                   root_velocity_err)
 
@@ -540,15 +556,9 @@ class ImitationTask(object):
     Returns:
       Handle to the simulated model for the reference motion.
     """
-    if self._using_real_robot:
-      return None
-
-    pyb = self._get_pybullet_client()
-    # Disable rendering while loading to speed up.
-    if self._env.rendering_enabled:
-      pyb.configureDebugVisualizer(pyb.COV_ENABLE_RENDERING, 0)
     ref_col = [1, 1, 1, self._draw_ref_model_alpha]
 
+    pyb = self._get_pybullet_client()
     urdf_file = self._env.robot.GetURDFFile()
     ref_model = pyb.loadURDF(urdf_file, useFixedBase=True)
 
@@ -585,15 +595,10 @@ class ImitationTask(object):
 
       pyb.changeVisualShape(ref_model, j, rgbaColor=ref_col)
 
-    if self._env.rendering_enabled:
-      pyb.configureDebugVisualizer(pyb.COV_ENABLE_RENDERING, 1)
     return ref_model
 
   def _build_joint_data(self):
     """Precomputes joint data to facilitating accessing data from motion frames."""
-    if self._using_real_robot:
-      return
-
     num_joints = self._get_num_joints()
     self._joint_pose_idx = np.zeros(num_joints, dtype=np.int32)
     self._joint_pose_size = np.zeros(num_joints, dtype=np.int32)
@@ -730,8 +735,6 @@ class ImitationTask(object):
     Args:
       perturb_state: A flag for enabling perturbations to be applied to state.
     """
-    if self._using_real_robot:
-      raise RuntimeError("Real robot cannot sync to reference motion.")
     pose = self._ref_pose
     vel = self._ref_vel
     if perturb_state:
@@ -749,9 +752,6 @@ class ImitationTask(object):
       pose: pose to be applied to the character
       vel: velocity to be applied to the character
     """
-    if self._using_real_robot:
-      return
-
     motion = self.get_active_motion()
     pyb = self._get_pybullet_client()
 
@@ -782,9 +782,7 @@ class ImitationTask(object):
 
   def _get_pybullet_client(self):
     """Get bullet client from the environment"""
-    if self._using_real_robot:
-      raise RuntimeError("Tried to access simulation when running real robot")
-    return self._env.pybullet_client
+    return self._env._pybullet_client
 
   def _get_motion_time(self):
     """Get the time since the start of the reference motion."""
@@ -839,23 +837,41 @@ class ImitationTask(object):
 
   def get_pose_size(self):
     """Get the total size of a pose array."""
-    return self.get_active_motion().get_frame_size()
+    num_joints = self._get_num_joints()
+    pose_size = self._get_joint_pose_idx(
+        num_joints - 1) + self._get_joint_pose_size(num_joints - 1)
+    return pose_size
 
   def get_vel_size(self):
     """Get the total size of a velocity array."""
-    return self.get_active_motion().get_frame_vel_size()
+    num_joints = self._get_num_joints()
+    vel_size = self._get_joint_vel_idx(
+        num_joints - 1) + self._get_joint_vel_size(num_joints - 1)
+    return vel_size
 
   def _get_sim_base_position(self):
-    return np.array(self._env.robot.GetBasePosition())
+    pyb = self._get_pybullet_client()
+    pos = pyb.getBasePositionAndOrientation(self._env.robot.quadruped)[0]
+    pos = np.array(pos)
+    return pos
 
   def _get_sim_base_rotation(self):
-    return np.array(self._env.robot.GetBaseOrientation())
+    pyb = self._get_pybullet_client()
+    rotation = pyb.getBasePositionAndOrientation(self._env.robot.quadruped)[1]
+    rotation = np.array(rotation)
+    return rotation
 
-  def get_ref_base_position(self):
-    return self.get_active_motion().get_frame_root_pos(self._ref_pose)
+  def _get_ref_base_position(self):
+    pyb = self._get_pybullet_client()
+    pos = pyb.getBasePositionAndOrientation(self._ref_model)[0]
+    pos = np.array(pos)
+    return pos
 
-  def get_ref_base_rotation(self):
-    return self.get_active_motion().get_frame_root_rot(self._ref_pose)
+  def _get_ref_base_rotation(self):
+    pyb = self._get_pybullet_client()
+    rotation = pyb.getBasePositionAndOrientation(self._ref_model)[1]
+    rotation = np.array(rotation)
+    return rotation
 
   def _calc_ref_pose(self, time, apply_origin_offset=True):
     """Calculates the reference pose for a given point in time.
@@ -1003,6 +1019,35 @@ class ImitationTask(object):
     self._clip_change_time = change_time
 
     return
+
+  def _build_sim_pose(self, phys_model):
+    """Build  pose vector from simulated model."""
+    pose = np.zeros(self.get_pose_size())
+    pyb = self._get_pybullet_client()
+    root_pos, root_rot = pyb.getBasePositionAndOrientation(phys_model)
+    root_pos = np.array(root_pos)
+    root_rot = np.array(root_rot)
+
+    joint_pose = []
+
+    num_joints = self._get_num_joints()
+    for j in range(num_joints):
+      j_state_sim = pyb.getJointStateMultiDof(phys_model, j)
+      j_pose_sim = np.array(j_state_sim[0])
+
+      j_size_sim = len(j_pose_sim)
+
+      if j_size_sim > 0:
+        joint_pose.append(j_pose_sim)
+
+    joint_pose = np.concatenate(joint_pose)
+
+    motion = self.get_active_motion()
+    motion.set_frame_root_pos(root_pos, pose)
+    motion.set_frame_root_rot(root_rot, pose)
+    motion.set_frame_joints(joint_pose, pose)
+
+    return pose
 
   def _get_default_root_rotation(self):
     """Get default root rotation."""
@@ -1197,19 +1242,3 @@ class ImitationTask(object):
     pose = np.concatenate([root_pos, root_rot, joint_pose])
 
     return pose
-
-  @property
-  def cycle_sync_enabled(self):
-    return self._enable_cycle_sync
-
-  @property
-  def tar_frame_steps(self):
-    return tuple(self._tar_frame_steps)
-
-  @property
-  def enable_rand_init_time(self):
-    return self._enable_rand_init_time
-
-  @property
-  def warmup_time(self):
-    return self._warmup_time

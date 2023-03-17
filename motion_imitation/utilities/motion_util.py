@@ -95,14 +95,3 @@ def calc_heading_rot(q):
   heading = calc_heading(q)
   q_heading = transformations.quaternion_about_axis(heading, [0, 0, 1])
   return q_heading
-
-
-def to_matrix(position, roll_pitch_yaw):
-  cos_yaw, sin_yaw = np.cos(roll_pitch_yaw[2]), np.sin(roll_pitch_yaw[2])
-  return np.array(((cos_yaw, -sin_yaw, position[0]),
-                   (sin_yaw, cos_yaw, position[1]),
-                   (0.0, 0.0, 1.0)))
-
-
-def normalize_angle(theta):
-  return (theta + np.pi) % (2 * np.pi) - np.pi

@@ -3,7 +3,7 @@ import time
 
 import embodied
 import numpy as np
-
+import imageio
 
 def acting(agent, env, replay, logger, actordir, args):
 
@@ -29,7 +29,7 @@ def acting(agent, env, replay, logger, actordir, args):
     print(f'Episode has {length} steps and return {score:.1f}.')
     metrics['length'] = length
     metrics['score'] = score
-    metrics['average_reward'] = score / length
+    metrics['average_reward'] = score / length if length != 0 else score
     metrics['reward_rate'] = (ep['reward'] - ep['reward'].min() >= 0.1).mean()
     logs = {}
     for key, value in ep.items():
@@ -42,9 +42,14 @@ def acting(agent, env, replay, logger, actordir, args):
         logs[f'mean_{key}'] = ep[key].mean()
       if re.match(args.log_keys_max, key):
         logs[f'max_{key}'] = ep[key].max(0).mean()
+      # imageio.mimsave("gif/"+str(step)+".gif", ep[args.log_keys_video[0]], fps=18)
     if should_video(step):
       for key in args.log_keys_video:
         metrics[f'policy_{key}'] = ep[key]
+
+        # for A1Sim visualization
+        imageio.mimsave("gif/"+str(step)+".gif", ep[key], fps=18)
+
     logger.add(metrics, prefix='episode')
     logger.add(logs, prefix='logs')
     logger.add(replay.stats, prefix='replay')

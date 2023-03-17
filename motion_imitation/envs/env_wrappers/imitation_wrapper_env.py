@@ -47,8 +47,6 @@ class ImitationWrapperEnv(object):
 
     if self._enable_curriculum():
       self._update_time_limit()
-    else:
-      self._max_episode_steps = episode_length_end
 
     self.seed()
     return
@@ -79,14 +77,7 @@ class ImitationWrapperEnv(object):
     if not done:
       self._total_step_count += 1
 
-    info = {
-        "terminated":
-            terminated,
-        "max_torque":
-            np.max(np.abs(self._gym_env._robot._observed_motor_torques)),
-        "metrics":
-            self._get_metrics()
-    }
+    info = {"terminated": terminated}
 
     return observation, reward, done, info
 
@@ -111,7 +102,7 @@ class ImitationWrapperEnv(object):
       self._update_time_limit()
 
     return observation
-
+  
   def _modify_observation(self, original_observation):
     """Appends target observations from the reference motion to the observations.
 
@@ -159,22 +150,3 @@ class ImitationWrapperEnv(object):
                        t * self._episode_length_end)
     self._max_episode_steps = new_steps
     return
-
-  def _get_metrics(self):
-    x, y, _ = self._gym_env.last_base_position
-    (forward, sideways, _), (_, _, yaw) = self._gym_env.robot.RelativeTransformSinceReset()
-    yaw = np.rad2deg(yaw)
-    # First element is value; second is aggregator function.
-    return {
-        # Aggregator finds the farthest value from the origin.
-        "Position/Final_Robot_X": (x, lambda vec: max(vec, key=abs)),
-        "Position/Final_Robot_Y": (y, lambda vec: max(vec, key=abs)),
-        "Position/Robot_Travel_Forward": (forward, np.mean),
-        "Position/Robot_Travel_Sideways": (sideways, np.mean),
-        "Position/Robot_Travel_Yaw_Deg": (yaw, np.mean),
-    }
-
-  def set_task(self, new_task):
-    self._gym_env.set_task(new_task)
-    self.observation_space = self._build_observation_space()
-

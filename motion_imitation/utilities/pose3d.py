@@ -247,11 +247,6 @@ def IsRotationMatrix(m):
   eye = np.matmul(rot, np.transpose(rot))
   return np.isclose(eye, np.identity(3), atol=1e-4).all()
 
-
-def PoseTransformPoint(point, position, quat):
-  """Transforms point by rotating it and adding the position."""
-  return QuaternionRotatePoint(point, quat) + position
-
 # def ZAxisAlignedRobotPoseTool(robot_pose_tool):
 #   """Returns the current gripper pose rotated for alignment with the z-axis.
 

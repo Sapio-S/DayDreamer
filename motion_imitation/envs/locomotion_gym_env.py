@@ -45,8 +45,7 @@ class LocomotionGymEnv(gym.Env):
                env_sensors=None,
                robot_sensors=None,
                task=None,
-               env_randomizers=None,
-               robot_kwargs=None):
+               env_randomizers=None):
     """Initializes the locomotion gym environment.
 
     Args:
@@ -60,7 +59,6 @@ class LocomotionGymEnv(gym.Env):
       env_randomizers: A list of EnvRandomizer(s). An EnvRandomizer may
         randomize the physical property of minitaur, change the terrrain during
         reset(), or add perturbation forces during step().
-      robot_kwargs: An optional dictionary of arguments to pass to the robot.
 
     Raises:
       ValueError: If the num_action_repeat is less than 1.
@@ -71,7 +69,6 @@ class LocomotionGymEnv(gym.Env):
     self._gym_config = gym_config
     self._robot_class = robot_class
     self._robot_sensors = robot_sensors
-    self._robot_kwargs = robot_kwargs or {}
 
     self._sensors = env_sensors if env_sensors is not None else list()
     if self._robot_class is None:
@@ -239,9 +236,6 @@ class LocomotionGymEnv(gym.Env):
           motor_control_mode=self._gym_config.simulation_parameters.
           motor_control_mode,
           reset_time=self._gym_config.simulation_parameters.reset_time,
-          reset_at_current_position=self._gym_config.simulation_parameters.
-          reset_at_current_position,
-          motor_torque_limits=self._gym_config.simulation_parameters.torque_limits,
           enable_clip_motor_commands=self._gym_config.simulation_parameters.
           enable_clip_motor_commands,
           enable_action_filter=self._gym_config.simulation_parameters.
@@ -249,8 +243,7 @@ class LocomotionGymEnv(gym.Env):
           enable_action_interpolation=self._gym_config.simulation_parameters.
           enable_action_interpolation,
           allow_knee_contact=self._gym_config.simulation_parameters.
-          allow_knee_contact,
-          **self._robot_kwargs)
+          allow_knee_contact)
 
     # Reset the pose of the robot.
     self._robot.Reset(reload_urdf=False,
@@ -279,20 +272,8 @@ class LocomotionGymEnv(gym.Env):
     # Loop over all env randomizers.
     for env_randomizer in self._env_randomizers:
       env_randomizer.randomize_env(self)
-
-    # Reset the observations again, since randomizers/task might change the env.
-    self._robot.ClearObservationHistory()
-    self._robot.ReceiveObservation()
-
-    for s in self.all_sensors():
-      s.on_reset(self)
-
-    # Reset the observations again, since randomizers/task might change the env.
-    self._robot.ClearObservationHistory()
-    self._robot.ReceiveObservation()
-
-    for s in self.all_sensors():
-      s.on_reset(self)
+    
+    self.sim_steps = 0
 
     return self._get_observation()
 
@@ -318,6 +299,8 @@ class LocomotionGymEnv(gym.Env):
       ValueError: The action dimension is not the same as the number of motors.
       ValueError: The magnitude of actions is out of bounds.
     """
+    self.sim_steps += 1
+
     self._last_base_position = self._robot.GetBasePosition()
     self._last_action = action
 
@@ -338,16 +321,16 @@ class LocomotionGymEnv(gym.Env):
                                                        base_pos)
       self._pybullet_client.configureDebugVisualizer(
           self._pybullet_client.COV_ENABLE_SINGLE_STEP_RENDERING, 1)
-      alpha = 0.5
-      if self._show_reference_id>0:
+      alpha = 1.
+      if self._show_reference_id>=0:
         alpha = self._pybullet_client.readUserDebugParameter(self._show_reference_id)
-
+      
       ref_col = [1, 1, 1, alpha]
       if hasattr(self._task, '_ref_model'):
         self._pybullet_client.changeVisualShape(self._task._ref_model, -1, rgbaColor=ref_col)
         for l in range (self._pybullet_client.getNumJoints(self._task._ref_model)):
-               self._pybullet_client.changeVisualShape(self._task._ref_model, l, rgbaColor=ref_col)
-
+        	self._pybullet_client.changeVisualShape(self._task._ref_model, l, rgbaColor=ref_col)
+    
       delay = self._pybullet_client.readUserDebugParameter(self._delay_id)
       if (delay>0):
         time.sleep(delay)
@@ -370,7 +353,7 @@ class LocomotionGymEnv(gym.Env):
     self._env_step_counter += 1
     if done:
       self._robot.Terminate()
-    return self._get_observation(), reward, done, {}
+    return self._get_observation(), reward, done, {"is_first": self.sim_steps==1}
 
   def render(self, mode='rgb_array'):
     if mode != 'rgb_array':
@@ -394,7 +377,7 @@ class LocomotionGymEnv(gym.Env):
         renderer=self._pybullet_client.ER_BULLET_HARDWARE_OPENGL,
         viewMatrix=view_matrix,
         projectionMatrix=proj_matrix)
-    rgb_array = np.array(px).astype(np.uint8)
+    rgb_array = np.array(px)
     rgb_array = rgb_array[:, :, :3]
     return rgb_array
 
@@ -423,8 +406,8 @@ class LocomotionGymEnv(gym.Env):
     self._world_dict = new_dict.copy()
 
   def _termination(self):
-    # if not self._robot.is_safe:
-    #   return True
+    if not self._robot.is_safe:
+      return True
 
     if self._task and hasattr(self._task, 'done'):
       return self._task.done(self)
@@ -512,14 +495,6 @@ class LocomotionGymEnv(gym.Env):
   @property
   def task(self):
     return self._task
-
-  def set_task(self, new_task):
-    # Hide the reference model from ImitationTask by moving it under the floor.
-    if hasattr(self._task, "_ref_model") and self._task._ref_model is not None:
-      self._pybullet_client.resetBasePositionAndOrientation(
-          self._task._ref_model, (0, 0, -2), (0, 0, 0, 1))
-    self._task = new_task
-    self._task.reset(self)
 
   @property
   def robot_class(self):

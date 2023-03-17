@@ -42,7 +42,8 @@ def imitation_terminal_condition(env,
     A boolean indicating if episode is over.
   """
 
-  task = env.task
+  pyb = env._pybullet_client
+  task = env._task
 
   motion_over = task.is_motion_over()
   foot_links = env.robot.GetFootLinkIDs()
@@ -60,20 +61,19 @@ def imitation_terminal_condition(env,
         contact_fall = True
         break
 
-  root_pos_ref = task.get_ref_base_position()
-  root_rot_ref = task.get_ref_base_rotation()
-  root_pos_robot = env.robot.GetBasePosition()
-  root_rot_robot = env.robot.GetBaseOrientation()
+  root_pos_ref, root_rot_ref = pyb.getBasePositionAndOrientation(
+      task.get_ref_model())
+  root_pos_sim, root_rot_sim = pyb.getBasePositionAndOrientation(
+      env.robot.quadruped)
 
-  root_pos_diff = np.array(root_pos_ref) - np.array(root_pos_robot)
+  root_pos_diff = np.array(root_pos_ref) - np.array(root_pos_sim)
   root_pos_fail = (
       root_pos_diff.dot(root_pos_diff) >
       dist_fail_threshold * dist_fail_threshold)
 
   root_rot_diff = transformations.quaternion_multiply(
       np.array(root_rot_ref),
-      transformations.quaternion_conjugate(np.array(root_rot_robot)))
-  root_rot_diff /= np.linalg.norm(root_rot_diff)
+      transformations.quaternion_conjugate(np.array(root_rot_sim)))
   _, root_rot_diff_angle = pose3d.QuaternionToAxisAngle(
       root_rot_diff)
   root_rot_diff_angle = motion_util.normalize_rotation_angle(

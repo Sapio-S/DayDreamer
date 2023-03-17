@@ -43,8 +43,6 @@ class SimulationParameters(object):
   enable_action_interpolation = attr.ib(type=bool, default=True)
   allow_knee_contact = attr.ib(type=bool, default=False)
   enable_clip_motor_commands = attr.ib(type=bool, default=True)
-  reset_at_current_position = attr.ib(type=bool, default=False)
-  torque_limits = attr.ib(type=float, default=42.0)
 
 
 @attr.s

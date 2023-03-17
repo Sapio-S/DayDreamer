@@ -37,9 +37,6 @@ class MotorControlMode(enum.Enum):
   PWM = 4
 
 
-class SafetyError(Exception):
-  pass
-
 # Each hybrid action is a tuple (position, position_gain, velocity,
 # velocity_gain, torque)
 HYBRID_ACTION_DIMENSION = 5

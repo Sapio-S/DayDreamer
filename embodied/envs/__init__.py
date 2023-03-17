@@ -12,6 +12,7 @@ from .hrlgrid import HRLGrid
 from .loconav import LocoNav
 from .minecraft import Minecraft
 from .a1 import A1
+from .a1_sim import A1Sim
 
 
 def load_env(
@@ -86,6 +87,10 @@ def load_single_env(
     assert repeat == 1
     assert size == (64, 64)
     env = HRLGrid(int(task), length or 1000)
+  elif suite == 'A1Sim':
+    assert size == (64, 64), size
+    env = A1Sim(task, repeat, length or 1000, True)
+    # env = A1Sim(task, repeat, size)
   else:
     raise NotImplementedError(suite)
   for name, space in env.act_space.items():

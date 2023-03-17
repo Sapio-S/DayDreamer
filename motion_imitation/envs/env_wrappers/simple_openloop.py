@@ -31,7 +31,6 @@ import numpy as np
 
 from motion_imitation.robots import laikago_pose_utils
 from motion_imitation.robots import minitaur_pose_utils
-from motion_imitation.robots import a1
 
 class MinitaurPoseOffsetGenerator(object):
   """A trajectory generator that return a constant leg pose."""
@@ -43,7 +42,6 @@ class MinitaurPoseOffsetGenerator(object):
                action_scale=1.0,
                action_limit=0.5):
     """Initializes the controller.
-
     Args:
       init_swing: the swing of the default pose offset
       init_extension: the extension of the default pose offset
@@ -76,11 +74,9 @@ class MinitaurPoseOffsetGenerator(object):
 
   def get_action(self, current_time=None, input_action=None):
     """Computes the trajectory according to input time and action.
-
     Args:
       current_time: The time in gym env since reset.
       input_action: A numpy array. The input leg pose from a NN controller.
-
     Returns:
       A numpy array. The desired motor angles.
     """
@@ -123,18 +119,16 @@ class LaikagoPoseOffsetGenerator(object):
                                            hip_angle_3=init_hip,
                                            knee_angle_3=init_knee)))
     action_high = np.array([action_limit] * 12)
-    self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
+    self.action_space = spaces.Box(-1*action_high, action_high, dtype=np.float32)
 
   def reset(self):
     pass
 
   def get_action(self, current_time=None, input_action=None):
     """Computes the trajectory according to input time and action.
-
     Args:
       current_time: The time in gym env since reset.
       input_action: A numpy array. The input leg pose from a NN controller.
-
     Returns:
       A numpy array. The desired motor angles.
     """
@@ -147,37 +141,50 @@ class LaikagoPoseOffsetGenerator(object):
     return input_observation
 
 
-class A1PoseOffsetGenerator(object):
-  """A trajectory generator that return constant motor angles."""
-  def __init__(
-      self,
-      action_limit=.5
-  ):
-    """Initializes the controller.
-    Args:
-      action_limit: a tuple of [limit_abduction, limit_hip, limit_knee]
-    """
-    self._pose = np.array([0.,0.9,-1.8,0.,0.9,-1.8,0.,0.9,-1.8,0.,0.9,-1.8])
-    # action_high = np.array([action_limit] * 12)
-    self.action_limit = action_limit
-    self.action_space = spaces.Box(np.array([-1] * 12), np.array([1] * 12), dtype=np.float32)
+class SimpleRobotOffsetGenerator(object):
+    """A trajectory generator that return constant motor angles."""
 
-  def reset(self):
-    pass
+    def __init__(
+            self,
+            pose,
+            action_limit=0.5,
+    ):
+        """Initializes the controller.
+      Args:
+        action_limit: a tuple of [limit_abduction, limit_hip, limit_knee]
+      """
+        self._pose = np.array(
+            attr.astuple(
+                laikago_pose_utils.LaikagoPose(abduction_angle_0=pose[0],
+                                               hip_angle_0=pose[1],
+                                               knee_angle_0=pose[2],
+                                               abduction_angle_1=pose[3],
+                                               hip_angle_1=pose[4],
+                                               knee_angle_1=pose[5],
+                                               abduction_angle_2=pose[6],
+                                               hip_angle_2=pose[7],
+                                               knee_angle_2=pose[8],
+                                               abduction_angle_3=pose[9],
+                                               hip_angle_3=pose[10],
+                                               knee_angle_3=pose[11])))
+        action_high = np.array([action_limit] * 12)
+        self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
 
-  def get_action(self, current_time=None, input_action=None):
-    """Computes the trajectory according to input time and action.
+    def reset(self):
+        pass
 
-    Args:
-      current_time: The time in gym env since reset.
-      input_action: A numpy array. The input leg pose from a NN controller.
+    def get_action(self, current_time=None, input_action=None):
+        """Computes the trajectory according to input time and action.
+        Args:
+          current_time: The time in gym env since reset.
+          input_action: A numpy array. The input leg pose from a NN controller.
+        Returns:
+          A numpy array. The desired motor angles.
+        """
+        del current_time
+        return self._pose + input_action
 
-    Returns:
-      A numpy array. The desired motor angles.
-    """
-    return a1.unnormalize_action(input_action)
+    def get_observation(self, input_observation):
+        """Get the trajectory generator's observation."""
 
-  def get_observation(self, input_observation):
-    """Get the trajectory generator's observation."""
-
-    return input_observation
+        return input_observation

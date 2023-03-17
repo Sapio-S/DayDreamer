@@ -26,8 +26,6 @@ import os
 import random
 import tensorflow as tf
 import time
-import pybullet as p
-import moviepy.editor as mpy
 
 from motion_imitation.envs import env_builder as env_builder
 from motion_imitation.learning import imitation_policies as imitation_policies
@@ -71,7 +69,7 @@ def build_model(env, num_procs, timesteps_per_actorbatch, optim_batchsize, outpu
                optim_epochs=1,
                optim_stepsize=1e-5,
                optim_batchsize=optim_batchsize,
-               lam=0.99,
+               lam=0.95,
                adam_epsilon=1e-5,
                schedule='constant',
                policy_kwargs=policy_kwargs,
@@ -112,22 +110,15 @@ def test(model, env, num_procs, num_episodes=None):
     num_local_episodes = np.inf
 
   o = env.reset()
-  video_frames = []
   while episode_count < num_local_episodes:
     a, _ = model.predict(o, deterministic=True)
     o, r, done, info = env.step(a)
     curr_return += r
-    img = env.render(mode="rgb_array")
-    video_frames.append(img)
 
     if done:
         o = env.reset()
-        print(curr_return)
         sum_return += curr_return
         episode_count += 1
-        if len(video_frames) > 0:
-           clip = mpy.ImageSequenceClip(video_frames, fps=(1/.033))
-           clip.write_videofile("testing_ppo.mp4")
 
   sum_return = MPI.COMM_WORLD.allreduce(sum_return, MPI.SUM)
   episode_count = MPI.COMM_WORLD.allreduce(episode_count, MPI.SUM)
@@ -150,31 +141,19 @@ def main():
   arg_parser.add_argument("--num_test_episodes", dest="num_test_episodes", type=int, default=None)
   arg_parser.add_argument("--model_file", dest="model_file", type=str, default="")
   arg_parser.add_argument("--total_timesteps", dest="total_timesteps", type=int, default=2e8)
-  arg_parser.add_argument("--train_reset", dest="train_reset", action="store_true", default=False)
   arg_parser.add_argument("--int_save_freq", dest="int_save_freq", type=int, default=0) # save intermediate model every n policy steps
-  arg_parser.add_argument("--real_robot", dest="real", action="store_true")
-  arg_parser.add_argument("--sim_robot", dest="real", action="store_false")
-  arg_parser.set_defaults(real=False)
-  arg_parser.add_argument("--realistic_sim", dest="realistic_sim", action="store_true", default=False)
 
   args = arg_parser.parse_args()
-
-  if (args.seed is not None):
-      set_rand_seed(args.seed)
   
   num_procs = MPI.COMM_WORLD.Get_size()
   os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
   
   enable_env_rand = ENABLE_ENV_RANDOMIZER and (args.mode != "test")
-  env = env_builder.build_env("reset" if args.train_reset else "imitate",
-                              motion_files=[find_file(args.motion_file)],
-                              num_parallel_envs=num_procs,
-                              mode=args.mode,
-                              enable_randomizer=enable_env_rand,
-                              enable_rendering=args.visualize,
-                              use_real_robot=args.real,
-                              reset_at_current_position=args.multitask,
-                              realistic_sim=args.realistic_sim)
+  env = env_builder.build_imitation_env(motion_files=[args.motion_file],
+                                        num_parallel_envs=num_procs,
+                                        mode=args.mode,
+                                        enable_randomizer=enable_env_rand,
+                                        enable_rendering=args.visualize)
   
   model = build_model(env=env,
                       num_procs=num_procs,

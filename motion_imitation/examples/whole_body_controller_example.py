@@ -24,6 +24,7 @@ from mpc_controller import locomotion_controller
 from mpc_controller import openloop_gait_generator
 from mpc_controller import raibert_swing_leg_controller
 #from mpc_controller import torque_stance_leg_controller
+#import mpc_osqp
 from mpc_controller import torque_stance_leg_controller_quadprog as torque_stance_leg_controller
 
 
@@ -129,7 +130,9 @@ def _setup_controller(robot):
       state_estimator,
       desired_speed=desired_speed,
       desired_twisting_speed=desired_twisting_speed,
-      desired_body_height=robot.MPC_BODY_HEIGHT)
+      desired_body_height=robot.MPC_BODY_HEIGHT
+      #,qp_solver = mpc_osqp.QPOASES #or mpc_osqp.OSQP
+      )
 
   controller = locomotion_controller.LocomotionController(
       robot=robot,
@@ -171,7 +174,6 @@ def main(argv):
         pybullet_client=p,
         motor_control_mode=robot_config.MotorControlMode.HYBRID,
         enable_action_interpolation=False,
-        log_time_per_step=True,
         time_step=0.002,
         action_repeat=1)
   else:
@@ -179,7 +181,6 @@ def main(argv):
                   motor_control_mode=robot_config.MotorControlMode.HYBRID,
                   enable_action_interpolation=False,
                   reset_time=2,
-                  log_time_per_step=True,
                   time_step=0.002,
                   action_repeat=1)
 
@@ -224,7 +225,7 @@ def main(argv):
       actual_duration = time.time() - start_time_wall
       if actual_duration < expected_duration:
         time.sleep(expected_duration - actual_duration)
-
+    print("actual_duration=", actual_duration)
   if FLAGS.use_gamepad:
     gamepad.stop()
 
