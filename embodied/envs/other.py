@@ -45,7 +45,7 @@ class EnvConfig:
     control_mode: ControlMode = ControlMode.DELTA_XY  # The control mode
     max_delta_mm: int = 20  # max displacement for the arm per time step
     control_rate_hz: float = 5
-    with_camera: bool = True
+    with_camera: bool = False
     debug_cam_vis: bool = False
     use_xarm: bool = True
 

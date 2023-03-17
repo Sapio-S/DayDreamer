@@ -9,7 +9,7 @@ from typing import Any, Dict, Tuple
 import cv2
 import dcargs
 import numpy as np
-import pyrealsense2 as rs
+# import pyrealsense2 as rs
 from PIL import Image
 from spherov2 import scanner
 from spherov2.sphero_edu import SpheroEduAPI
@@ -32,7 +32,7 @@ class Rate:
 @dataclasses.dataclass
 class EnvConfig:
     control_rate_hz: float = 2
-    with_camera: bool = True
+    with_camera: bool = False
     debug_cam_vis: bool = False
     use_real: bool = True
 
@@ -55,6 +55,7 @@ class SpheroEnv:
 
         if cfg.use_real:
             self._toy = scanner.find_toy()
+            print("api is real!!\n\n\n\n\n")
             self._api = SpheroEduAPI(self._toy).__enter__()
             self._api.set_stabilization(False)
         else:
@@ -62,57 +63,57 @@ class SpheroEnv:
             if not self.cfg.debug_cam_vis:
                 return
 
-        if self.cfg.with_camera:
-            ctx = rs.context()
-            devices = ctx.query_devices()
-            for dev in devices:
-                dev.hardware_reset()
-            time.sleep(2)
-            self.pipeline = rs.pipeline()
-            config = rs.config()
-            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-            self.pipeline.start(config)
+        # if self.cfg.with_camera:
+        #     ctx = rs.context()
+        #     devices = ctx.query_devices()
+        #     for dev in devices:
+        #         dev.hardware_reset()
+        #     time.sleep(2)
+        #     self.pipeline = rs.pipeline()
+        #     config = rs.config()
+        #     config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        #     config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        #     self.pipeline.start(config)
 
-            self.rate = Rate(cfg.control_rate_hz)
+        #     self.rate = Rate(cfg.control_rate_hz)
 
-            self.last_pos = None
-            self._reset(move=False)
+        #     self.last_pos = None
+        #     self._reset(move=False)
 
-            if self.cfg.debug_cam_vis:
-                while True:
-                    image, depth = self.get_frames()
+        #     if self.cfg.debug_cam_vis:
+        #         while True:
+        #             image, depth = self.get_frames()
 
-                    # im = Image.fromarray(image)
-                    # im.save("ball.jpg")
-                    # import ipdb; ipdb.set_trace();
+        #             # im = Image.fromarray(image)
+        #             # im.save("ball.jpg")
+        #             # import ipdb; ipdb.set_trace();
 
-                    pos, white_mask, _ = self.get_ball_pos(image)
-                    # print(pos, self.get_reward())
-                    pos = pos * (self.ARENA_MAX - self.ARENA_MIN) + self.ARENA_MIN
-                    depth = np.repeat(depth, 3, -1)
-                    # mask_3 = cv2.cvtColor(white_mask, cv2.COLOR_GRAY2BGR)
-                    # white_mask = np.repeat(white_mask[:, :, None], 3, -1)
-                    # import ipdb; ipdb.set_trace();
-                    # cv2.circle(mask_3, pos.astype(np.int), 50, (0, 0, 255))
-                    mask = np.repeat(white_mask[..., None], 3, -1)
-                    cv2.circle(image, pos.astype(np.int), 50, (0, 255, 0))
-                    cv2.circle(mask, pos.astype(np.int), 50, (0, 255, 0))
+        #             pos, white_mask, _ = self.get_ball_pos(image)
+        #             # print(pos, self.get_reward())
+        #             pos = pos * (self.ARENA_MAX - self.ARENA_MIN) + self.ARENA_MIN
+        #             depth = np.repeat(depth, 3, -1)
+        #             # mask_3 = cv2.cvtColor(white_mask, cv2.COLOR_GRAY2BGR)
+        #             # white_mask = np.repeat(white_mask[:, :, None], 3, -1)
+        #             # import ipdb; ipdb.set_trace();
+        #             # cv2.circle(mask_3, pos.astype(np.int), 50, (0, 0, 255))
+        #             mask = np.repeat(white_mask[..., None], 3, -1)
+        #             cv2.circle(image, pos.astype(np.int), 50, (0, 255, 0))
+        #             cv2.circle(mask, pos.astype(np.int), 50, (0, 255, 0))
 
-                    cv2.imshow(
-                        "img",
-                        np.concatenate([image[:, self.X_ENV_CROP, ::-1], mask], 1),
-                    )
+        #             cv2.imshow(
+        #                 "img",
+        #                 np.concatenate([image[:, self.X_ENV_CROP, ::-1], mask], 1),
+        #             )
 
-                    # import matplotlib.pyplot as plt
-                    # fig, ax = plt.subplots()
-                    # ax.hist(depth.ravel(), bins=100)
-                    # plt.show()
+        #             # import matplotlib.pyplot as plt
+        #             # fig, ax = plt.subplots()
+        #             # ax.hist(depth.ravel(), bins=100)
+        #             # plt.show()
 
-                    # image = cv2.applyColorMap(255 - depth, cv2.COLORMAP_VIRIDIS)
-                    # cv2.imshow("img", depth)
+        #             # image = cv2.applyColorMap(255 - depth, cv2.COLORMAP_VIRIDIS)
+        #             # cv2.imshow("img", depth)
 
-                    cv2.waitKey(1)
+        #             cv2.waitKey(1)
 
         self.clear_error_states()
 

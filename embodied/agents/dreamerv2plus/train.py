@@ -24,7 +24,7 @@ def main(argv=None):
 
   parsed, other = embodied.Flags(
       configs=['defaults'], worker=0, workers=1,
-      learner_addr='localhost:2222',
+      learner_addr='localhost:2224',
   ).parse_known(argv)
   config = embodied.Config(agnt.Agent.configs['defaults'])
   for name in parsed.configs:
@@ -34,7 +34,7 @@ def main(argv=None):
   config = config.update(logdir=str(embodied.Path(config.logdir)))
   args = embodied.Config(logdir=config.logdir, **config.train)
   args = args.update(expl_until=args.expl_until // config.env.repeat)
-  print(config)
+  # print(config)
 
   logdir = embodied.Path(config.logdir)
   step = embodied.Counter()

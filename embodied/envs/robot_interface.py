@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import cv2
 import dcargs
 import numpy as np
-import pyrealsense2 as rs
+# import pyrealsense2 as rs
 
 import embodied
 from embodied.envs.spacemouse import SpaceMouse
@@ -291,7 +291,7 @@ class Rate:
 class EnvConfig:
     max_delta_m: float = 0.04  # max displacement for the arm per time step
     control_rate_hz: float = 20
-    with_camera: bool = True
+    with_camera: bool = False
     debug_cam_vis: bool = False
     use_real: bool = True
     robot_type: RobotType = RobotType.XARM
@@ -322,33 +322,33 @@ class BaseEnv:
                 return
         self.rate = Rate(cfg.control_rate_hz)
 
-        if self.cfg.with_camera:
-            ctx = rs.context()
-            devices = ctx.query_devices()
-            for dev in devices:
-                dev.hardware_reset()
-            time.sleep(2)
-            self.pipeline = rs.pipeline()
-            config = rs.config()
-            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-            self.pipeline.start(config)
-            # if self.cfg.debug_cam_vis:
-            if self.cfg.debug_cam_vis:
-                while True:
-                    image = self.get_frames()[0][:, :, ::-1]
-                    depth = np.repeat(self.get_frames()[1], 3, -1)
-                    cv2.imshow("img", np.concatenate([image, depth], 1))
+        # if self.cfg.with_camera:
+        #     ctx = rs.context()
+        #     devices = ctx.query_devices()
+        #     for dev in devices:
+        #         dev.hardware_reset()
+        #     time.sleep(2)
+        #     self.pipeline = rs.pipeline()
+        #     config = rs.config()
+        #     config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        #     config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        #     self.pipeline.start(config)
+        #     # if self.cfg.debug_cam_vis:
+        #     if self.cfg.debug_cam_vis:
+        #         while True:
+        #             image = self.get_frames()[0][:, :, ::-1]
+        #             depth = np.repeat(self.get_frames()[1], 3, -1)
+        #             cv2.imshow("img", np.concatenate([image, depth], 1))
 
-                    # import matplotlib.pyplot as plt
-                    # fig, ax = plt.subplots()
-                    # ax.hist(depth.ravel(), bins=100)
-                    # plt.show()
+        #             # import matplotlib.pyplot as plt
+        #             # fig, ax = plt.subplots()
+        #             # ax.hist(depth.ravel(), bins=100)
+        #             # plt.show()
 
-                    # image = cv2.applyColorMap(255 - depth, cv2.COLORMAP_VIRIDIS)
-                    # cv2.imshow("img", depth)
+        #             # image = cv2.applyColorMap(255 - depth, cv2.COLORMAP_VIRIDIS)
+        #             # cv2.imshow("img", depth)
 
-                    cv2.waitKey(1)
+        #             cv2.waitKey(1)
 
     def __len__(self):
         # Return positive integer for batched envs.
