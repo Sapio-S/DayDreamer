@@ -188,3 +188,37 @@ class SimpleRobotOffsetGenerator(object):
         """Get the trajectory generator's observation."""
 
         return input_observation
+
+from motion_imitation.robots import a1
+class A1PoseOffsetGenerator(object):
+  """A trajectory generator that return constant motor angles."""
+  def __init__(
+      self,
+      action_limit=.5
+  ):
+    """Initializes the controller.
+    Args:
+      action_limit: a tuple of [limit_abduction, limit_hip, limit_knee]
+    """
+    self._pose = np.array([0.,0.9,-1.8,0.,0.9,-1.8,0.,0.9,-1.8,0.,0.9,-1.8])
+    # action_high = np.array([action_limit] * 12)
+    self.action_limit = action_limit
+    self.action_space = spaces.Box(np.array([-1] * 12), np.array([1] * 12), dtype=np.float32)
+
+  def reset(self):
+    pass
+
+  def get_action(self, current_time=None, input_action=None):
+    """Computes the trajectory according to input time and action.
+    Args:
+      current_time: The time in gym env since reset.
+      input_action: A numpy array. The input leg pose from a NN controller.
+    Returns:
+      A numpy array. The desired motor angles.
+    """
+    return a1.unnormalize_action(input_action)
+
+  def get_observation(self, input_observation):
+    """Get the trajectory generator's observation."""
+
+    return input_observation

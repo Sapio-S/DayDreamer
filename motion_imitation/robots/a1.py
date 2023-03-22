@@ -172,6 +172,52 @@ def foot_positions_in_base_frame(foot_angles):
                                                    l_hip_sign=(-1)**(i + 1))
   return foot_positions + HIP_OFFSETS
 
+MOTOR_MINS = np.array([
+    -0.802851455917,
+    -1.0471975512,
+    -2.69653369433,
+] * 4)
+
+MOTOR_MAXS = np.array([
+    0.802851455917,
+    4.18879020479,
+    -0.916297857297,
+] * 4)
+
+MOTOR_OFFSETS = np.array([
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+])
+
+MOTOR_USED = np.array([
+    [0.01, 0.99],
+    [0.01, 0.90],
+    [0.01, 0.60],
+] * 4)
+
+STANDING_POSE = np.array([0, -0.2, 1.0] * 4)
+
+def unnormalize_action(action, clip=True):
+  if clip:
+    action = np.clip(action, -1, 1)
+  action = action / 2 + 0.5
+  lo = MOTOR_MINS * (1 - MOTOR_USED[:, 0]) + MOTOR_MAXS * MOTOR_USED[:, 0]
+  hi = MOTOR_MINS * (1 - MOTOR_USED[:, 1]) + MOTOR_MAXS * MOTOR_USED[:, 1]
+  action = action * (hi - lo) + lo
+  action += MOTOR_OFFSETS
+  return action
+
+def normalize_action(action, clip=True):
+  action -= MOTOR_OFFSETS
+  lo = MOTOR_MINS * (1 - MOTOR_USED[:, 0]) + MOTOR_MAXS * MOTOR_USED[:, 0]
+  hi = MOTOR_MINS * (1 - MOTOR_USED[:, 1]) + MOTOR_MAXS * MOTOR_USED[:, 1]
+  action = (action - lo) / (hi - lo)
+  action = (action - 0.5) * 2
+  if clip:
+    action = np.clip(action, -1, 1)
+  return action
 
 class A1(minitaur.Minitaur):
   """A simulation for the Laikago robot."""

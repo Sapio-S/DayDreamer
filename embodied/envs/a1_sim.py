@@ -53,5 +53,6 @@ class A1Sim(embodied.Env):
       'reward': obs[1],
       'is_first': obs[3]['is_first'], # action["reset"], # obs[3]["is_first"], 
       'is_last': self.sim_step==0, # action["reset"], # obs[2],
+      'is_terminal': False,
       'image': self._env.render(mode='rgb_array')
     }

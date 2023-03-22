@@ -22,7 +22,7 @@ defaults:
     steps: 1e10
     expl_until: 0
     log_every: 1e4
-    eval_every: 1e5
+    eval_every: 1e4
     eval_eps: 1
     eval_samples: 1
     train_every: 16

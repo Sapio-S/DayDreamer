@@ -11,6 +11,5 @@ pyusb
 urx
 spherov2
 bleak
-gym[atari]
-
-ffmpeg
+imageio
+dm-sonnet
