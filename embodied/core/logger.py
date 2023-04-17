@@ -7,6 +7,7 @@ import numpy as np
 
 from . import path
 
+import wandb
 
 class Logger:
 
@@ -143,6 +144,23 @@ class JSONLOutput(AsyncOutput):
     with (self._logdir / self._filename).open('a') as f:
       f.write(json.dumps({'step': step, **scalars}) + '\n')
 
+class WAndBOutput(AsyncOutput):
+  def __init__(self, fps=20, parallel=True):
+    super().__init__(self._write, parallel)
+    self._fps = fps
+
+  def _write(self, summaries):
+    for step, name, value in summaries:
+      if len(value.shape) == 0:
+        wandb.log({name: value}, step=step)
+      elif len(value.shape) == 2:
+        image = wandb.Image(value)
+        wandb.log({name: [image]}, step=step)
+      elif len(value.shape) == 3:
+        image = wandb.Image(value)
+        wandb.log({name: [image]}, step=step)
+      elif len(value.shape) == 4:
+        wandb.log({name: wandb.Video(value, fps=self._fps)})
 
 class TensorBoardOutput(AsyncOutput):
 

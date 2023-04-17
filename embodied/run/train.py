@@ -66,7 +66,7 @@ def train(agent, env, replay, logger, args):
   state = [None]  # To be writable from train step function below.
   assert args.pretrain > 0  # At least one step to initialize variables.
   for _ in range(args.pretrain):
-    _, state[0], _ = agent.train(next(dataset), state[0])
+    _, state[0], met = agent.train(next(dataset), state[0])
 
   metrics = collections.defaultdict(list)
   batch = [None]

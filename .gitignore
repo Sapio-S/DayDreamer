@@ -9,3 +9,6 @@ exp
 trash/
 gif/
 log/
+wandb/
+test/
+model/

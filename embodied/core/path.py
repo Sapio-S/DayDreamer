@@ -150,58 +150,8 @@ class LocalPath(Path):
     shutil.copytree(self, type(self)(dest), dirs_exist_ok=True)
 
 
-class GFilePath(Path):
-
-  def __init__(self, path):
-    path = str(path)
-    if not (path.startswith('/') or '://' in path):
-      path = os.path.abspath(os.path.expanduser(path))
-    super().__init__(path)
-    import tensorflow as tf
-    self._gfile = tf.io.gfile
-
-  @contextlib.contextmanager
-  def open(self, mode='r'):
-    path = str(self)
-    if 'a' in mode and path.startswith('/cns/'):
-      path += '%r=3.2'
-    if mode.startswith('x') and self.exists():
-      raise FileExistsError(path)
-      mode = mode.replace('x', 'w')
-    with self._gfile.GFile(path, mode) as f:
-      yield f
-
-  def absolute(self):
-    return self
-
-  def glob(self, pattern):
-    for path in self._gfile.glob(f'{str(self)}/{pattern}'):
-      yield type(self)(path)
-
-  def exists(self):
-    return self._gfile.exists(str(self))
-
-  def isfile(self):
-    return self.exists() and not self.isdir()
-
-  def isdir(self):
-    return self._gfile.isdir(str(self))
-
-  def mkdirs(self):
-    self._gfile.makedirs(str(self))
-
-  def remove(self):
-    self._gfile.remove(str(self))
-
-  def rmtree(self):
-    self._gfile.rmtree(str(self))
-
-  def copy(self, dest):
-    self._gfile.copy(str(self), str(dest), overwrite=True)
-
-
 Path.filesystems = [
-    (GFilePath, lambda path: path.startswith('gs://')),
-    (GFilePath, lambda path: path.startswith('/cns/')),
+    # (GFilePath, lambda path: path.startswith('gs://')),
+    # (GFilePath, lambda path: path.startswith('/cns/')),
     (LocalPath, lambda path: True),
 ]

@@ -130,24 +130,18 @@ class Cache:
     return os.path.join(self._cache_dir, dir_, filename)
 
   def fetch(self, key, pk3_path):
-    import tensorflow as tf
+    import shutil
     path = self.get_path(key)
-    try:
-      tf.io.gfile.copy(path, pk3_path, overwrite=True)
-      # print('DMLab cache found level.')
-      return True
-    except tf.errors.OpError:
-      # print('DMLab cache did not find level.')
-      return False
+    shutil.copyfile(path, pk3_path)
+    return True
 
   def write(self, key, pk3_path):
     import os
-    import tensorflow as tf
     path = self.get_path(key)
     try:
-      if not tf.io.gfile.exists(path):
-        tf.io.gfile.makedirs(os.path.dirname(path))
-        tf.io.gfile.copy(pk3_path, path)
-        # print('DMLab cache stored level.')
+      if not os.path.exists(path):
+        import shutil
+        os.mkdir(path)
+        shutil.copyfile(path, pk3_path)
     except Exception as e:
       print(f'Could to store level: {e}')
