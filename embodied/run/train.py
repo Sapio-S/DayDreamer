@@ -28,7 +28,7 @@ def train(agent, env, replay, logger, args):
     metrics = {}
     length = len(ep['reward']) - 1
     score = float(ep['reward'].astype(np.float64).sum())
-    print(f'Episode has {length} steps and return {score:.1f}.')
+    # print(f'Episode has {length} steps and return {score:.1f}.')
     metrics['length'] = length
     metrics['score'] = score
     metrics['reward_rate'] = (ep['reward'] - ep['reward'].min() >= 0.1).mean()
@@ -49,7 +49,7 @@ def train(agent, env, replay, logger, args):
     logger.add(metrics, prefix='episode')
     logger.add(logs, prefix='logs')
     logger.add(replay.stats, prefix='replay')
-    logger.write()
+    # logger.write()
 
   driver = embodied.Driver(env)
   driver.on_episode(lambda ep, worker: per_episode(ep))

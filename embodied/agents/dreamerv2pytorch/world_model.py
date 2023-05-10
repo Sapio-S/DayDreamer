@@ -87,12 +87,16 @@ class RSSM(nn.Module):
             rssm_state = self.rssm_imagine(action, rssm_state)
             next_rssm_states.append(rssm_state)
             action_entropy.append(action_dist.entropy())
-            imag_log_probs.append(action_dist.log_prob(torch.round(action.detach())))
-
+            if self.config.actor_grad_disc == 'reinforce':
+                imag_log_probs.append(action_dist.log_prob(action))
+                
         # batch???
         next_rssm_states = self.rssm_stack_states(next_rssm_states, dim=0)
         action_entropy = torch.stack(action_entropy, dim=0)
-        imag_log_probs = torch.stack(imag_log_probs, dim=0)
+        if self.config.actor_grad_disc == 'reinforce':
+            imag_log_probs = torch.stack(imag_log_probs, dim=0)
+        else:
+            imag_log_probs = None
         return next_rssm_states, imag_log_probs, action_entropy
     
     def get_model_state(self, rssm_state):
@@ -225,9 +229,10 @@ class WorldModel(nn.Module):
         pcont_dist = self.discount_decoder(post_modelstate[:,:-1])
         
         # calculate loss
-        obs_loss = self._obs_loss(obs_dist, obs[:,:-1])
-        reward_loss = self._reward_loss(reward_dist, rewards[:,1:])
-        pcont_loss = self._pcont_loss(pcont_dist, nonterms[:,1:])
+        # obs_loss = self._obs_loss(obs_dist, obs[:,:-1])
+        obs_loss = self.obs_decoder.loss(obs_dist, obs[:,:-1])
+        reward_loss = self.reward_decoder.loss(reward_dist, rewards[:,1:])
+        pcont_loss = self.discount_decoder.loss(pcont_dist, nonterms[:,1:].float())
         prior_dist, post_dist, kl_loss = self._kl_loss(prior, posterior, training=True)
 
         model_loss = self.loss_scale['kl'] * kl_loss  + self.loss_scale['image'] * obs_loss + self.loss_scale['reward'] * reward_loss+ self.loss_scale['cont'] * pcont_loss
@@ -258,9 +263,9 @@ class WorldModel(nn.Module):
 
         return data, posterior, metric
         
-    def _obs_loss(self, obs_dist, obs):
-        obs_loss = -torch.mean(obs_dist.log_prob(obs))
-        return obs_loss
+    # def _obs_loss(self, obs_dist, obs):
+    #     obs_loss = -torch.mean(obs_dist.log_prob(obs))
+    #     return obs_loss
     
     def _kl_loss(self, prior, posterior, training=True):
         prior_dist = self.RSSM.get_dist(prior)
@@ -274,33 +279,33 @@ class WorldModel(nn.Module):
         kl_loss, mets = self.wmkl(kl_loss, update=training)
         return prior_dist, post_dist, kl_loss
     
-    def _reward_loss(self, reward_dist, rewards):
-        reward_loss = -torch.mean(reward_dist.log_prob(rewards))
-        return reward_loss
+    # def _reward_loss(self, reward_dist, rewards):
+    #     reward_loss = -torch.mean(reward_dist.log_prob(rewards))
+    #     return reward_loss
     
-    def _pcont_loss(self, pcont_dist, nonterms):
-        pcont_target = nonterms.float()
-        pcont_loss = -torch.mean(pcont_dist.log_prob(pcont_target))
-        return pcont_loss
+    # def _pcont_loss(self, pcont_dist, nonterms):
+    #     pcont_target = nonterms.float()
+    #     pcont_loss = -torch.mean(pcont_dist.log_prob(pcont_target))
+    #     return pcont_loss
 
-    def save(self, cnt):
-        import wandb
-        state_dict = {}
-        cnt = 0
-        for model in self.models:
-            state_dict[cnt] = model.state_dict()
-            cnt += 1
-        torch.save(state_dict, wandb.run.dir + '/world_model'+str(cnt))
+    # def save(self, cnt):
+    #     import wandb
+    #     state_dict = {}
+    #     cnt = 0
+    #     for model in self.models:
+    #         state_dict[cnt] = model.state_dict()
+    #         cnt += 1
+    #     torch.save(state_dict, wandb.run.dir + '/world_model'+str(cnt))
 
-    def load(self):
-        print('loading...')
-        state_dict = torch.load("wandb/offline-run-20230408_085518-3rj27648/files/world_model500",
-            map_location=torch.device(self.device))
-        self.obs_encoder = self.obs_encoder.load_state_dict(state_dict[0])
-        self.RSSM = self.RSSM.load_state_dict(state_dict[1])
-        self.obs_decoder = self.obs_decoder.load_state_dict(state_dict[3])
-        self.reward_decoder = self.reward_decoder.load_state_dict(state_dict[2])
-        self.discount_decoder = self.discount_decoder.load_state_dict(state_dict[4])
-        self.models = [self.obs_encoder, self.RSSM, self.reward_decoder, self.obs_decoder, self.discount_decoder]
-        for model in self.models:
-            model.to(self.device)
+    # def load(self):
+    #     print('loading...')
+    #     state_dict = torch.load("wandb/offline-run-20230408_085518-3rj27648/files/world_model500",
+    #         map_location=torch.device(self.device))
+    #     self.obs_encoder = self.obs_encoder.load_state_dict(state_dict[0])
+    #     self.RSSM = self.RSSM.load_state_dict(state_dict[1])
+    #     self.obs_decoder = self.obs_decoder.load_state_dict(state_dict[3])
+    #     self.reward_decoder = self.reward_decoder.load_state_dict(state_dict[2])
+    #     self.discount_decoder = self.discount_decoder.load_state_dict(state_dict[4])
+    #     self.models = [self.obs_encoder, self.RSSM, self.reward_decoder, self.obs_decoder, self.discount_decoder]
+    #     for model in self.models:
+    #         model.to(self.device)

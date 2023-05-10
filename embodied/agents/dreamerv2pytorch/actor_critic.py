@@ -45,22 +45,24 @@ class ActorCritic(nn.Module):
     def actorcritc_loss(self, posterior):
         shp = tuple(posterior.deter.shape)
 
+        batched_posterior = self.RSSM.rssm_detach(self.RSSM.rssm_seq_to_batch(posterior, shp[0], shp[1]-1))
+        
+        # with FreezeParameters([self.world_model]):
         with torch.no_grad():
-            batched_posterior = self.RSSM.rssm_detach(self.RSSM.rssm_seq_to_batch(posterior, shp[0], shp[1]-1))
-        
-        with FreezeParameters([self.RSSM]):
             imag_rssm_states, imag_log_prob, policy_entropy = self.RSSM.rollout_imagination(self.config.imag_horizon, self.actor, batched_posterior)
+            imag_modelstates = self.RSSM.get_model_state(imag_rssm_states)
         
-        imag_modelstates = self.RSSM.get_model_state(imag_rssm_states)
-        with FreezeParameters([self.world_model]):
-            imag_reward_dist = self.world_model.reward_decoder(imag_modelstates)
-            imag_reward = imag_reward_dist.mean
-            discount_dist = self.world_model.discount_decoder(imag_modelstates)
-            discount_arr = self.config.discount*torch.round(discount_dist.base_dist.probs)
+            # imag_reward_dist = self.world_model.reward_decoder(imag_modelstates)
+            # imag_reward = imag_reward_dist.mean
+            imag_reward = self.world_model.reward_decoder.run(imag_modelstates)
+            # discount_dist = self.world_model.discount_decoder(imag_modelstates)
+            # discount_arr = self.config.discount*torch.round(discount_dist.base_dist.probs)
+            discount_arr = self.config.discount * self.world_model.discount_decoder.run(imag_modelstates)
         
-        with FreezeParameters([self.critic]):
-            imag_value_dist = self.critic.target_net(imag_modelstates)
-            imag_value = imag_value_dist.mean
+        # with FreezeParameters([self.critic]):
+            # imag_value_dist = self.critic.target_net(imag_modelstates)
+            # imag_value = imag_value_dist.mean
+        imag_value = self.critic.target_net.run(imag_modelstates)
 
         actor_loss, discount, lambda_returns = self.actor._actor_loss(imag_reward, imag_value, discount_arr, imag_log_prob, policy_entropy)
         value_loss = self.critic._value_loss(imag_modelstates, discount, lambda_returns)     
@@ -75,6 +77,8 @@ class ActorCritic(nn.Module):
             'max_targ':max_targ,
             'std_targ':std_targ,
             'mean_targ':mean_targ,
+            'actor_loss':actor_loss.item(),
+            'critic_loss':value_loss.item(),
         }
 
         return actor_loss, value_loss, target_info
@@ -95,45 +99,55 @@ class Actor(nn.Module):
     def forward(self, model_state):
         action_dist = self.model(model_state)
         # change precision to prevent precision loss
-        action = action_dist.sample().to(torch.float64)
-        action = action + action_dist.probs.to(torch.float64) - action_dist.probs.detach().to(torch.float64)
-        return action.to(torch.float32), action_dist
+        if self.config.actor_grad_disc == 'dynamics':
+            action = action_dist.rsample()
+        if self.config.actor_grad_disc == 'reinforce': # TODO: check?
+            action = action_dist.sample()
+            # action = action + action_dist.probs.to(torch.float64) - action_dist.probs.detach().to(torch.float64)
+        return action, action_dist
 
-    def add_exploration(self, action: torch.Tensor, itr: int, mode='train'):
+    @torch.no_grad()
+    def act(self, state, mode='train'):
         if mode == 'train':
-            expl_amount = self.train_noise
-            expl_amount = expl_amount - itr/self.expl_decay
-            expl_amount = max(self.expl_min, expl_amount)
+            action_dist = self.model(state)
+            action = action_dist.sample()
+            # expl_amount = self.train_noise
+            # expl_amount = expl_amount - itr/self.expl_decay
+            # expl_amount = max(self.expl_min, expl_amount)
         elif mode == 'eval':
-            expl_amount = self.eval_noise
+            action = self.model.run(state)
+        elif mode == 'explore':
+            # return random policy
+            action_dist = self.model(state)
+            action = action_dist.sample()
         else:
             raise NotImplementedError
-            
-        if self.expl_type == 'epsilon_greedy':
-            if np.random.uniform(0, 1) < expl_amount:
-                index = torch.randint(0, self.action_size, action.shape[:-1], device=action.device)
-                action = torch.zeros_like(action)
-                action[:, index] = 1
-            return action
+        return action
 
-        raise NotImplementedError
+        # if self.expl_type == 'epsilon_greedy':
+        #     if np.random.uniform(0, 1) < expl_amount:
+        #         index = torch.randint(0, self.action_size, action.shape[:-1], device=action.device)
+        #         action = torch.zeros_like(action)
+        #         action[:, index] = 1
+        #     return action
+
+        # raise NotImplementedError
 
     def _actor_loss(self, imag_reward, imag_value, discount_arr, imag_log_prob, policy_entropy):
-
         lambda_returns = compute_return(imag_reward[:-1], imag_value[:-1], discount_arr[:-1], bootstrap=imag_value[-1], lambda_=self.config.return_lambda)
         
         if self.config.actor_grad_disc == 'reinforce':
             advantage = (lambda_returns-imag_value[:-1]).detach()
             objective = imag_log_prob[1:].unsqueeze(-1) * advantage
-
         elif self.config.actor_grad_disc == 'dynamics':
             objective = lambda_returns
         else:
-            raise NotImplementedError
+            raise NotImplementedError   
 
         discount_arr = torch.cat([torch.ones_like(discount_arr[:1]), discount_arr[1:]])
         discount = torch.cumprod(discount_arr[:-1], 0)
         policy_entropy = policy_entropy[1:].unsqueeze(-1)
+
         # if self.config.actent_norm:
         #     lo = policy.minent / np.prod(self.actent.shape)
         #     hi = policy.maxent / np.prod(self.actent.shape)
@@ -156,52 +170,8 @@ class Critic(nn.Module):
             self.target_net.load_state_dict(self.net.state_dict())
         self.optim = optim.Adam(self.net.parameters(), config.critic_opt.lr, eps=config.critic_opt.eps)
 
-    def train(self, traj, actor):
-        metrics = {}
-        reward = self.rewfn(traj)
-        target = tf.stop_gradient(self.target(
-            traj, reward, self.config.critic_return)[0])
-        with tf.GradientTape() as tape:
-            dist = self.net({k: v[:-1] for k, v in traj.items()})
-            loss = -(dist.log_prob(target) * traj['weight'][:-1]).mean()
-        metrics.update(self.opt(tape, loss, self.net))
-        metrics.update({
-            'critic_loss': loss,
-            'imag_reward_mean': reward.mean(),
-            'imag_reward_std': reward.std(),
-            'imag_critic_mean': dist.mean().mean(),
-            'imag_critic_std': dist.mean().std(),
-            'imag_return_mean': target.mean(),
-            'imag_return_std': target.std(),
-        })
-        self.update_slow()
-        return metrics
-
     def score(self, traj, actor):
         return self.target(traj, self.rewfn(traj), self.config.actor_return)
-
-    def target(self, traj, reward, impl):
-        if len(reward) != len(traj['action']) - 1:
-            raise AssertionError('Should provide rewards for all but last action.')
-        disc = traj['cont'][1:] * self.config.discount
-        value = self.target_net(traj).mean()
-        if impl == 'gae':
-            advs = [tf.zeros_like(value[0])]
-            deltas = reward + disc * value[1:] - value[:-1]
-            for t in reversed(range(len(disc))):
-                advs.append(deltas[t] + disc[t] * self.config.return_lambda * advs[-1])
-            adv = tf.stack(list(reversed(advs))[:-1])
-            return adv + value[:-1], value[:-1]
-        elif impl == 'gve':
-            vals = [value[-1]]
-            interm = reward + disc * value[1:] * (1 - self.config.return_lambda)
-            for t in reversed(range(len(disc))):
-                vals.append(interm[t] + disc[t] * self.config.return_lambda * vals[-1])
-            ret = tf.stack(list(reversed(vals))[:-1])
-            return ret, value[:-1]
-        else:
-            raise NotImplementedError(impl)
-
 
     def update_slow(self):
         if not self.config.slow_target:
@@ -222,7 +192,8 @@ class Critic(nn.Module):
             value_target = lambda_returns.detach()
 
         value_dist = self.net(value_modelstates) 
-        value_loss = -torch.mean(value_discount*value_dist.log_prob(value_target).unsqueeze(-1))
+        value_loss = self.net.loss(value_dist, value_target, value_discount)
+        # value_loss = -torch.mean(value_discount*value_dist.log_prob(value_target).unsqueeze(-1))
         return value_loss
 
 def compute_return(

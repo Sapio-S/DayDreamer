@@ -153,14 +153,14 @@ class WAndBOutput(AsyncOutput):
     for step, name, value in summaries:
       if len(value.shape) == 0:
         wandb.log({name: value}, step=step)
-      elif len(value.shape) == 2:
-        image = wandb.Image(value)
-        wandb.log({name: [image]}, step=step)
-      elif len(value.shape) == 3:
-        image = wandb.Image(value)
-        wandb.log({name: [image]}, step=step)
-      elif len(value.shape) == 4:
-        wandb.log({name: wandb.Video(value, fps=self._fps)})
+      # elif len(value.shape) == 2:
+      #   image = wandb.Image(value)
+      #   wandb.log({name: [image]}, step=step)
+      # elif len(value.shape) == 3:
+      #   image = wandb.Image(value)
+      #   wandb.log({name: [image]}, step=step)
+      # elif len(value.shape) == 4:
+      #   wandb.log({name: wandb.Video(value, fps=self._fps)})
 
 class TensorBoardOutput(AsyncOutput):
 

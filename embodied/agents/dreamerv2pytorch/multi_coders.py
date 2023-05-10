@@ -29,38 +29,18 @@ class MultiEncoder(nn.Module):
         if self.cnn_shapes:
             self._cnn = ImageEncoder(cnn_depth, cnn_kernels, self.cnn_shapes, device, **kw)
             self.embed_size = self._cnn.test_shape()[-1]
-            # out = self._cnn(torch.randn(self.cnn_shapes['image'], device=device).unsqueeze(0)).reshape(1,-1)
-            # self._cnn_mlp = MLP(out.shape[1], mlp_layers, mlp_units, dist=None)
-            # self._cnn_mlp = nn.Linear(out.shape[1], mlp_units)
-        else:
-            raise NotImplementedError(cnn)
-        if self.mlp_shapes:
-            self._mlp = MLP(None, mlp_layers, mlp_units, self.mlp_shapes, dist='none', **kw)
+        elif self.mlp_shapes:
+            self._mlp = MLP(self.mlp_shapes['image'][-1], mlp_layers, mlp_units, self.mlp_shapes, dist=None, **kw)
             self.embed_size = mlp_units
 
     def forward(self, data):
-        # some_key, some_shape = list(self.shapes.items())[0]
-        # batch_dims = tuple(data[some_key].shape[:-len(some_shape)])
-        # data = {
-        #     k: torch.reshape(v, (-1,) + tuple(v.shape)[len(batch_dims):])
-        #     for k, v in data.items()}
         outputs = []
         if self.cnn_shapes:
             x = self._cnn(data)
-            # output = self._cnn_mlp(x)
-            # inputs = torch.concat([data[k] for k in self.cnn_shapes], -1)
-            # output = self._cnn(inputs)
-            # output = output.reshape((output.shape[0], -1))
             outputs.append(x)
-        if self.mlp_shapes:
-            # inputs = [
-            #     data[k][..., None] if len(self.shapes[k]) == 0 else data[k]
-            #     for k in self.mlp_shapes]
-            # inputs = torch.concat(inputs, -1)
-            # outputs.append(self._mlp(inputs))
+        elif self.mlp_shapes:
             outputs.append(self._mlp(data))
         outputs = torch.concat(outputs, -1)
-        # outputs = outputs.reshape(batch_dims + outputs.shape[1:])
         return outputs
 
 
@@ -92,70 +72,44 @@ class MultiDecoder(nn.Module):
             if cnn == 'simple':
                 self._cnn = ImageDecoder(merged, cnn_depth, cnn_kernels, **kw)
                 self._cnn_linear = nn.Linear(state_size, np.prod(self._cnn.conv_shape))
-            # elif cnn == 'resnet':
-            #     self._cnn = ImageDecoderResnet(merged, cnn_depth, cnn_blocks, **kw)
             else:
                 raise NotImplementedError(cnn)
             self._image_dist = image_dist
 
-        if self.mlp_shapes:
-            self._mlp = MLP(self.mlp_shapes, mlp_layers, mlp_units, **kw)
-        # self._inputs = Input(inputs)
-        
+        elif self.mlp_shapes:
+            self._mlp = MLP(state_size, mlp_layers, mlp_units, self.mlp_shapes, output_shape=self.mlp_shapes['image'][-1], dist=None, **kw)
 
     def forward(self, inputs):
         features = inputs
-        # features = self._inputs(inputs)
-        # dists = {}
         if self.cnn_shapes:
             batch_shape = features.shape[:-1]
             flat = features.reshape([-1, features.shape[-1]])
             x = self._cnn_linear(flat).reshape(-1, *self._cnn.conv_shape)
             output = self._cnn(x)
-            # output = output.reshape(features.shape[:-1] + output.shape[1:])
-            # means = torch.split(output, [v[-1] for v in self.cnn_shapes.values()], -1)
-            # dists.update({
-            #     key: self._make_image_dist(key, mean)
-            #     for (key, shape), mean in zip(self.cnn_shapes.items(), means)})
             mean = torch.reshape(output, (*batch_shape, *self.input_shape))
             obs_dist = td.Independent(td.Normal(mean, 1), len(self.input_shape))
             return obs_dist
-        if self.mlp_shapes:
-            dists.update(self._mlp(features))
-        return dists
+        elif self.mlp_shapes:
+            dist = self._mlp(features)
+            return dist
 
-    def _make_image_dist(self, name, mean):
-        mean = mean.to(torch.float32)
-        if self._image_dist == 'normal':
-            normal = torch.distributions.normal.Normal(mean, 1)
-            return torch.distributions.independent.Independent(normal, 3)
-        # if self._image_dist == 'mse':
-        #     return nn.MSELoss(mean, 3, 'sum')
-        raise NotImplementedError(self._image_dist)
+    def loss(self, dist, target):
+        if self.cnn_shapes:
+            obs_loss = -torch.mean(dist.log_prob(obs))
+            return obs_loss
+        else:
+            return self._mlp.loss(dist, target)
 
     @torch.no_grad()
-    def test(self, features):
+    def test(self, input):
         if self.cnn_shapes:
             batch_shape = features.shape[:-1]
             flat = features.reshape([-1, features.shape[-1]])
             x = self._cnn_linear(flat).reshape(-1, *self._cnn.conv_shape)
             output = self._cnn(x)
-            # output = output.reshape(features.shape[:-1] + output.shape[1:])
-            # means = torch.split(output, [v[-1] for v in self.cnn_shapes.values()], -1)
-            # dists.update({
-            #     key: self._make_image_dist(key, mean)
-            #     for (key, shape), mean in zip(self.cnn_shapes.items(), means)})
-            # mean = torch.reshape(output, (*batch_shape, *self.input_shape))
-            # obs_dist = td.Independent(td.Normal(mean, 1), len(self.input_shape))
             return output
-
-    def train(self, features):
-        if self.cnn_shapes:
-            batch_shape = features.shape[:-1]
-            flat = features.reshape([-1, features.shape[-1]])
-            x = self._cnn_linear(flat).reshape(-1, *self._cnn.conv_shape)
-            output = self._cnn(x)
-            return output  
+        else:
+            return self._mlp.test(input)
 
 
 class MLP(nn.Module):
@@ -187,9 +141,9 @@ class MLP(nn.Module):
         if self._dist['dist'] == 'binary':
             return td.independent.Independent(td.Bernoulli(logits=dist_inputs), 1)
         if self._dist['dist'] == 'symlog':
-            return td.independent.Independent(td.Normal(dist_inputs, 1), 1)
+            return td.independent.Independent(td.Normal(dist_inputs, 1), 1) # TODO
         if self._dist['dist'] == 'mse':
-            return td.independent.Independent(td.Normal(dist_inputs, 1), 1)
+            return dist_inputs
         if self._dist['dist'] == 'onehot':
             return td.OneHotCategorical(logits=dist_inputs)  # td.independent.Independent(td.Normal(dist_inputs, 1), 1)
         if self._dist['dist'] == None:
@@ -201,8 +155,46 @@ class MLP(nn.Module):
     def test(self, input):
         return self.model(input)
 
+    def run(self, input):
+        output = self.forward(input)
+        if self._dist['dist'] == 'normal':
+            return output.mean
+        if self._dist['dist'] == 'binary':
+            return torch.round(output.base_dist.probs)
+        if self._dist['dist'] == 'symlog': # TODO
+            return output.mean
+        if self._dist['dist'] == 'mse':
+            return output
+        if self._dist['dist'] == 'onehot': # TODO
+            return output
+        if self._dist['dist'] == None:
+            return output
+
+        raise NotImplementedError(self._dist)
+
     def train(self, input):
         return self.model(input)
+
+    def loss(self, dist, target, discount=None):
+        if self._dist['dist'] == 'normal':
+            if discount is not None:
+                # return -torch.sum(torch.dot(discount, dist.log_prob(target)))
+                return -torch.mean(discount*dist.log_prob(target).unsqueeze(-1))
+            return -torch.sum(dist.log_prob(target))
+        if self._dist['dist'] == 'binary':
+            return -torch.sum(dist.log_prob(target))
+        if self._dist['dist'] == 'symlog': # TODO
+            return -torch.sum(dist.log_prob(target))
+        if self._dist['dist'] == 'mse':
+            if discount is not None:
+                return torch.mean((dist-target)**2 * discount)
+            return torch.mean((dist - target) ** 2)
+        if self._dist['dist'] == 'onehot': # TODO
+            return -torch.sum(dist.log_prob(target))
+        if self._dist['dist'] == None:
+            return torch.sum((dist - target) ** 2)
+
+        raise NotImplementedError(self._dist)
         
 class ImageEncoder(nn.Module):
 

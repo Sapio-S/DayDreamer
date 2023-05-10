@@ -201,9 +201,9 @@ class WorldModel(nn.Module):
         for model in self.models:
             model.to(self.device)
         # self.load() # TODO
-        self.criterion = nn.MSELoss() # TODO testing, remove when needed
+        self.criterion = nn.MSELoss(reduction='sum') # TODO testing, remove when needed
 
-        self.optim = optim.Adam(get_parameters(self.models), lr=5e-3, eps=config.model_opt.eps)
+        self.optim = optim.Adam(get_parameters(self.models), lr=1e-3, eps=config.model_opt.eps)
         self.wmkl = AutoAdapt((), **self.config.wmkl, inverse=False)
 
         self.cnt = 0
@@ -216,7 +216,7 @@ class WorldModel(nn.Module):
         # torch.save(data, 'data')
         # exit(0)
 
-        for i in range(1001):
+        for i in range(1):
             # forward computing
             embed = self.obs_encoder(obs)
             prev_rssm_state = self.RSSM._init_rssm_state(self.config.batch_size)   # TODO: need extra init?
@@ -225,23 +225,27 @@ class WorldModel(nn.Module):
             )
             post_modelstate = self.RSSM.get_model_state(posterior) 
 
-            # obs_dist = self.obs_decoder(post_modelstate[:,:-1])
-            # reward_dist = self.reward_decoder(post_modelstate[:,:-1])
-            # pcont_dist = self.discount_decoder(post_modelstate[:,:-1])
-            obs_res = self.obs_decoder.train(post_modelstate[:,:-1]).reshape(obs.shape[0], -1, obs.shape[2],obs.shape[3],obs.shape[4])
-            reward_res = self.reward_decoder.train(post_modelstate[:,:-1])
-            dis_res = self.discount_decoder.train(post_modelstate[:,:-1])
+            obs_dist = self.obs_decoder(post_modelstate[:,:-1])
+            reward_dist = self.reward_decoder(post_modelstate[:,:-1])
+            pcont_dist = self.discount_decoder(post_modelstate[:,:-1])
+
+            # obs_res = self.obs_decoder.train(post_modelstate[:,:-1]).reshape(obs.shape[0], -1, obs.shape[2],obs.shape[3],obs.shape[4])
+            # reward_res = self.reward_decoder.train(post_modelstate[:,:-1])
+            # dis_res = self.discount_decoder.train(post_modelstate[:,:-1])
             
             # calculate loss
             # obs_loss = self.criterion(obs_dist)
-            # obs_loss = self._obs_loss(obs_dist, obs[:,:-1]) / 10000
+            # obs_loss = self._obs_loss(obs_dist, obs[:,:-1])
             # reward_loss = self._reward_loss(reward_dist, rewards[:,1:])
             # pcont_loss = self._pcont_loss(pcont_dist, nonterms[:,1:])
-            # print(obs_res.shape)
-            # print(obs.shape)
-            obs_loss = self.criterion(obs_res, obs[:,:-1]) / 10
-            reward_loss = self.criterion(reward_res, rewards[:,:-1]) * 10
-            pcont_loss = self.criterion(dis_res, nonterms[:,:-1]) / 10
+
+            # obs_loss = self.criterion(obs_res, obs[:,:-1])
+            # obs_loss = self._obs_loss(obs_dist, obs[:,:-1])
+            obs_loss = self.obs_decoder.loss(obs_dist, obs[:,:-1])
+            reward_loss = self.reward_decoder.loss(reward_dist, rewards[:,1:])
+            pcont_loss = self.discount_decoder.loss(pcont_dist, nonterms[:,1:])
+            # reward_loss = self.criterion(reward_res, rewards[:,:-1])
+            # pcont_loss = self.criterion(dis_res, nonterms[:,:-1])
             prior_dist, post_dist, kl_loss = self._kl_loss(prior, posterior, training=True)
 
             model_loss = self.loss_scale['kl'] * kl_loss  + self.loss_scale['image'] * obs_loss + self.loss_scale['reward'] * reward_loss+ self.loss_scale['cont'] * pcont_loss
@@ -266,13 +270,11 @@ class WorldModel(nn.Module):
             if i % 100 == 0:
                 print(i, metric)
 
-            if i % 1000 == 0:
+            # if i % 1000 == 0:
                 # self.save(i)
             
-            # if i % 10000 == 0:
-
-
-        # TODO for test
+            if i % 10000 == 0:
+                # TODO for test
                 # forward computing
                 # embed = self.obs_encoder(obs)
                 # prev_rssm_state = self.RSSM._init_rssm_state(self.config.batch_size)   # TODO: need extra init?
@@ -280,36 +282,28 @@ class WorldModel(nn.Module):
                 #     self.config.replay_chunk, embed, actions, nonterms, prev_rssm_state
                 # )
                 # post_modelstate = self.RSSM.get_model_state(posterior) 
-        
 
                 obs_pred = self.obs_decoder.test(post_modelstate[:,:-1])
-                torch.save(obs, 'obs_'+str(i)+'.pt')
-                torch.save(obs_pred, 'pred_'+str(i)+'.pt')
+                torch.save(obs, 'test/cartpole/obs_'+str(i)+'.pt')
+                torch.save(obs_pred, 'test/cartpole/pred_'+str(i)+'.pt')
                 # prior_modelstate = self.RSSM.get_model_state(prior) 
                 # obs_pred2 = self.obs_decoder.test(prior_modelstate[:,:-1])
                 # torch.save(obs_pred, 'pred_prior_'+str(self.cnt)+'.pt')
 
-                # torch.save(post_modelstate[0],'post_state.pt')
+                torch.save(post_modelstate[0],'test/cartpole/post_state.pt')
+                # torch.save(post_modelstate,'test/cartpole/post_state_whole.pt')
                 # torch.save(prior_modelstate[0],'prior_state.pt')
 
-                torch.save(rewards[:,1:], 'reward.pt')
+                torch.save(rewards[:,1:], 'test/cartpole/reward.pt')
+                # torch.save(rewards, 'test/cartpole/reward_whole.pt')
                 pred_reward = self.reward_decoder.test(post_modelstate[:,:-1])
-                torch.save(pred_reward, 'pred_reward.pt')
+                torch.save(pred_reward, 'test/cartpole/pred_reward_'+str(i)+'.pt')
         
-                torch.save(nonterms[:,1:], 'nonterms.pt')
+                torch.save(nonterms[:,1:], 'test/cartpole/nonterms.pt')
                 pred_dis = self.discount_decoder.test(post_modelstate[:,:-1])
-                torch.save(pred_dis, 'pred_dis.pt')
+                torch.save(pred_dis, 'test/cartpole/pred_dis.pt')
         print('done')
         exit(0)
-
-
-
-        # update data
-        # outs = {}
-        # if 'key' in data:
-        #     criteria = {**data, **{"prior":prior, "post":posterior }}
-        #     outs.update(key=data['key'], priority=criteria[self.config.priority])
-        # posterior = torch.concat([posterior.deter, posterior.stoch], dim=2)
 
         return data, posterior, metric
         
@@ -328,35 +322,3 @@ class WorldModel(nn.Module):
         # scale
         kl_loss, mets = self.wmkl(kl_loss, update=training)
         return prior_dist, post_dist, kl_loss
-    
-    def _reward_loss(self, reward_dist, rewards):
-        reward_loss = -torch.mean(reward_dist.log_prob(rewards))
-        return reward_loss
-    
-    def _pcont_loss(self, pcont_dist, nonterms):
-        pcont_target = nonterms.float()
-        pcont_loss = -torch.mean(pcont_dist.log_prob(pcont_target))
-        return pcont_loss
-
-    def save(self, cnt):
-        import wandb
-        state_dict = {}
-        cnt = 0
-        for model in self.models:
-            state_dict[cnt] = model.state_dict()
-            cnt += 1
-            torch.save(state_dict, wandb.run.dir + '/world_model'+str(cnt))
-
-    def load(self):
-        print('loading...')
-        state_dict = torch.load("wandb/offline-run-20230413_185649-ldsqfmzm/files/world_model",
-            map_location=torch.device(self.device))
-        print(state_dict)
-        self.obs_encoder = self.obs_encoder.load_state_dict(state_dict[0])
-        self.RSSM = self.RSSM.load_state_dict(state_dict[1])
-        self.obs_decoder = self.obs_decoder.load_state_dict(state_dict[3])
-        self.reward_decoder = self.reward_decoder.load_state_dict(state_dict[2])
-        self.discount_decoder = self.discount_decoder.load_state_dict(state_dict[4])
-        self.models = [self.obs_encoder, self.RSSM, self.reward_decoder, self.obs_decoder, self.discount_decoder]
-        for model in self.models:
-            model.to(self.device)

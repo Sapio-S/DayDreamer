@@ -47,7 +47,7 @@ class AutoAdapt():
         scale = self._scale
     else:
         raise NotImplementedError(self._impl)
-    return torch.tensor(scale).detach()
+    return scale.clone().detach().requires_grad_(True)
 
   def update(self, reg):
     avg = reg.mean(list(range(len(reg.shape) - len(self._shape))))
@@ -120,8 +120,8 @@ def action_noise(action, amount, act_space):
 def build_model(num_layer, input_size, output_size, hidden_size):
     if num_layer == 1:
         model = [nn.Linear(input_size, output_size)]
-        model += [nn.LayerNorm(output_size)]                # TODO: check if needed
-        model += [nn.ELU()]                                 # TODO: check if needed
+        # model += [nn.LayerNorm(output_size)]                # TODO: check if needed
+        # model += [nn.ELU()]                                 # TODO: check if needed
     else:
         model = [nn.Linear(input_size, hidden_size)]
         model += [nn.LayerNorm(hidden_size)]
@@ -131,6 +131,6 @@ def build_model(num_layer, input_size, output_size, hidden_size):
             model += [nn.LayerNorm(hidden_size)]
             model += [nn.ELU()]
         model += [nn.Linear(hidden_size, int(np.prod(output_size)))]
-        model += [nn.LayerNorm(int(np.prod(output_size)))]  # TODO: check if needed
-        model += [nn.ELU()]                                 # TODO: check if needed
+        # model += [nn.LayerNorm(int(np.prod(output_size)))]  # TODO: check if needed
+        # model += [nn.ELU()]                                 # TODO: check if needed
     return nn.Sequential(*model)

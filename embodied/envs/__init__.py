@@ -2,12 +2,12 @@ import functools
 
 import embodied
 
-from .atari import Atari
+# from .atari import Atari
 # from .crafter import Crafter
 # from .dmc import DMC
 # from .dmlab import DMLab
 # from .dummy import Dummy
-# from .gym import Gym
+from .gym import Gym
 # from .hrlgrid import HRLGrid
 # from .loconav import LocoNav
 # from .minecraft import Minecraft

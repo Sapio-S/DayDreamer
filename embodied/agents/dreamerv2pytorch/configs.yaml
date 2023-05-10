@@ -4,6 +4,7 @@ defaults:
 
   # Trainer
   logdir: /dev/null
+  experiment_name: train_wm_only
   run: train_fixed_eval
   seed: 0
   task: dummy_discrete
@@ -146,6 +147,18 @@ atari:
   env: {gray: True, repeat: 4, amount: 16}
   train.steps: 5e7
   train.eval_every: 2.5e5
+  rssm: {units: 600, deter: 600}
+  model_opt.lr: 2e-4
+  actor_opt.lr: 4e-5
+  critic_opt.lr: 1e-4
+  actent.scale: 1e-3
+  discount: 0.999
+  loss_scales.kl: 0.1
+  loss_scales.cont: 5.0
+  reward_head.dist: mse
+  critic.dist: mse
+  reward_head.layers: 1
+  cont_head.layers: 1
 
 atari100k:
 
@@ -398,3 +411,23 @@ debug:
   .*\.units: 64
   .*\.wd: 0.0
   torch: {platform: gpu}
+
+gym:
+  task: gym_CartPole-v1
+  grad_heads: [decoder, reward, cont]
+  rssm: {units: 16, deter: 16, stoch: 4, classes: 4, act: elu, norm: layer, initial: learned2, unimix: 0.01, prior_layers: 2, post_layers: 1, gru_layers: 1, unroll: True}
+  encoder: {mlp_keys: '.*', cnn_keys: '$^', act: elu, norm: layer, mlp_layers: 2, mlp_units: 64, }
+  decoder: {mlp_keys: '.*', cnn_keys: '$^', act: elu, norm: layer, mlp_layers: 2, mlp_units: 64, image_dist: mse, inputs: [deter, stoch]}
+  reward_head: {layers: 2, units: 64, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
+  cont_head: {layers: 2, units: 64, act: elu, norm: layer, dist: binary, outscale: 0.1, inputs: [deter, stoch]}
+  replay_chunk: 16
+  train.train_every: 10
+  train.train_fill: 100
+  train.log_every: 1e4
+  train.eval_every: 1e4
+  actor: {layers: 2, units: 64, act: elu, norm: layer, minstd: 0.03, maxstd: 1.0, outscale: 0.1, unimix: 0.01, inputs: [deter, stoch]}
+  critic: {layers: 2, units: 64, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
+  actor_grad_disc: dynamics
+  train.steps: 5e7
+  model_opt.lr: 1e-3
+  replay: prio
