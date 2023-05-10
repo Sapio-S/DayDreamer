@@ -47,8 +47,8 @@ class ActorCritic(nn.Module):
 
         batched_posterior = self.RSSM.rssm_detach(self.RSSM.rssm_seq_to_batch(posterior, shp[0], shp[1]-1))
         
-        # with FreezeParameters([self.world_model]):
-        with torch.no_grad():
+        with FreezeParameters([self.world_model]):
+        # with torch.no_grad():
             imag_rssm_states, imag_log_prob, policy_entropy = self.RSSM.rollout_imagination(self.config.imag_horizon, self.actor, batched_posterior)
             imag_modelstates = self.RSSM.get_model_state(imag_rssm_states)
         
