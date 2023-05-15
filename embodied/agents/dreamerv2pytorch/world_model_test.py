@@ -213,8 +213,6 @@ class WorldModel(nn.Module):
         actions = data['action']
         rewards = data['reward'].unsqueeze(-1)
         nonterms = data['cont'].unsqueeze(-1)
-        # torch.save(data, 'data')
-        # exit(0)
 
         for i in range(1):
             # forward computing
@@ -284,24 +282,24 @@ class WorldModel(nn.Module):
                 # post_modelstate = self.RSSM.get_model_state(posterior) 
 
                 obs_pred = self.obs_decoder.test(post_modelstate[:,:-1])
-                torch.save(obs.detach().cpu(), 'test/contcar/obs_'+str(i)+'.pt')
-                torch.save(obs_pred.detach().cpu(), 'test/contcar/pred_'+str(i)+'.pt')
+                torch.save(obs.detach().cpu(), 'test/cartpole/obs_'+str(i)+'.pt')
+                torch.save(obs_pred.detach().cpu(), 'test/cartpole/pred_'+str(i)+'.pt')
                 # prior_modelstate = self.RSSM.get_model_state(prior) 
                 # obs_pred2 = self.obs_decoder.test(prior_modelstate[:,:-1])
                 # torch.save(obs_pred, 'pred_prior_'+str(self.cnt)+'.pt')
 
-                torch.save(post_modelstate[0].detach().cpu(),'test/contcar/post_state.pt')
-                # torch.save(post_modelstate,'test/contcar/post_state_whole.pt')
+                torch.save(post_modelstate[0].detach().cpu(),'test/cartpole/post_state.pt')
+                # torch.save(post_modelstate,'test/cartpole/post_state_whole.pt')
                 # torch.save(prior_modelstate[0],'prior_state.pt')
 
-                torch.save(rewards[:,1:].detach().cpu(), 'test/contcar/reward.pt')
-                # torch.save(rewards, 'test/contcar/reward_whole.pt')
+                torch.save(rewards[:,1:].detach().cpu(), 'test/cartpole/reward.pt')
+                # torch.save(rewards, 'test/cartpole/reward_whole.pt')
                 pred_reward = self.reward_decoder.test(post_modelstate[:,:-1])
-                torch.save(pred_reward.detach().cpu(), 'test/contcar/pred_reward_'+str(i)+'.pt')
+                torch.save(pred_reward.detach().cpu(), 'test/cartpole/pred_reward_'+str(i)+'.pt')
         
-                torch.save(nonterms[:,1:].detach().cpu(), 'test/contcar/nonterms.pt')
+                torch.save(nonterms[:,1:].detach().cpu(), 'test/cartpole/nonterms.pt')
                 pred_dis = self.discount_decoder.test(post_modelstate[:,:-1])
-                torch.save(pred_dis.detach().cpu(), 'test/contcar/pred_dis.pt')
+                torch.save(pred_dis.detach().cpu(), 'test/cartpole/pred_dis.pt')
         print('done')
         exit(0)
 

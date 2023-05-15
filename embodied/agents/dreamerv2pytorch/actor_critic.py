@@ -48,20 +48,12 @@ class ActorCritic(nn.Module):
         batched_posterior = self.RSSM.rssm_detach(self.RSSM.rssm_seq_to_batch(posterior, shp[0], shp[1]-1))
         
         with FreezeParameters([self.world_model]):
-        # with torch.no_grad():
             imag_rssm_states, imag_log_prob, policy_entropy = self.RSSM.rollout_imagination(self.config.imag_horizon, self.actor, batched_posterior)
             imag_modelstates = self.RSSM.get_model_state(imag_rssm_states)
-        
-            # imag_reward_dist = self.world_model.reward_decoder(imag_modelstates)
-            # imag_reward = imag_reward_dist.mean
             imag_reward = self.world_model.reward_decoder.run(imag_modelstates)
-            # discount_dist = self.world_model.discount_decoder(imag_modelstates)
-            # discount_arr = self.config.discount*torch.round(discount_dist.base_dist.probs)
+            # discount_arr = self.config.discount * torch.ones_like(imag_reward) 
             discount_arr = self.config.discount * self.world_model.discount_decoder.run(imag_modelstates)
         
-        # with FreezeParameters([self.critic]):
-            # imag_value_dist = self.critic.target_net(imag_modelstates)
-            # imag_value = imag_value_dist.mean
         imag_value = self.critic.target_net.run(imag_modelstates)
 
         actor_loss, discount, lambda_returns = self.actor._actor_loss(imag_reward, imag_value, discount_arr, imag_log_prob, policy_entropy)
@@ -100,7 +92,7 @@ class Actor(nn.Module):
         action_dist = self.model(model_state)
         # change precision to prevent precision loss
         if self.config.actor_grad_disc == 'dynamics':
-            action = action_dist.rsample()
+            action = action_dist.sample()
         if self.config.actor_grad_disc == 'reinforce': # TODO: check?
             action = action_dist.sample()
             # action = action + action_dist.probs.to(torch.float64) - action_dist.probs.detach().to(torch.float64)
@@ -108,30 +100,8 @@ class Actor(nn.Module):
 
     @torch.no_grad()
     def act(self, state, mode='train'):
-        if mode == 'train':
-            action_dist = self.model(state)
-            action = action_dist.sample()
-            # expl_amount = self.train_noise
-            # expl_amount = expl_amount - itr/self.expl_decay
-            # expl_amount = max(self.expl_min, expl_amount)
-        elif mode == 'eval':
-            action = self.model.run(state)
-        elif mode == 'explore':
-            # return random policy
-            action_dist = self.model(state)
-            action = action_dist.sample()
-        else:
-            raise NotImplementedError
+        action = self.model.run(state)
         return action
-
-        # if self.expl_type == 'epsilon_greedy':
-        #     if np.random.uniform(0, 1) < expl_amount:
-        #         index = torch.randint(0, self.action_size, action.shape[:-1], device=action.device)
-        #         action = torch.zeros_like(action)
-        #         action[:, index] = 1
-        #     return action
-
-        # raise NotImplementedError
 
     def _actor_loss(self, imag_reward, imag_value, discount_arr, imag_log_prob, policy_entropy):
         lambda_returns = compute_return(imag_reward[:-1], imag_value[:-1], discount_arr[:-1], bootstrap=imag_value[-1], lambda_=self.config.return_lambda)
@@ -148,11 +118,6 @@ class Actor(nn.Module):
         discount = torch.cumprod(discount_arr[:-1], 0)
         policy_entropy = policy_entropy[1:].unsqueeze(-1)
 
-        # if self.config.actent_norm:
-        #     lo = policy.minent / np.prod(self.actent.shape)
-        #     hi = policy.maxent / np.prod(self.actent.shape)
-        #     ent = (ent - lo) / (hi - lo)
-        # ent_loss, mets = self.actent(policy_entropy)
         actor_loss = -torch.sum(torch.mean(discount * (objective + self.config.critic.outscale * policy_entropy), dim=1)) 
         return actor_loss, discount, lambda_returns
 
@@ -193,7 +158,7 @@ class Critic(nn.Module):
 
         value_dist = self.net(value_modelstates) 
         value_loss = self.net.loss(value_dist, value_target, value_discount)
-        # value_loss = -torch.mean(value_discount*value_dist.log_prob(value_target).unsqueeze(-1))
+        self.update_slow()
         return value_loss
 
 def compute_return(

@@ -47,6 +47,7 @@ class Agent(nn.Module):
         # self.world_model.load_state_dict(torch.load('/home/xyq/gym/Pendulum/world_model'))
         # self.actor_critic.load_state_dict(torch.load('/home/xyq/gym/Pendulum/actor_critic'))
         # self.world_model.load_state_dict(torch.load('/data/home/xyq/gym/CarCont/run1/world_model'))
+        # self.world_model.load_state_dict(torch.load('/home/eva_share/user_file/xyq/gym/cartpole/run3/world_model')) # eva4
 
     def policy(self, obs, state=None, mode='train'):
         with torch.no_grad():

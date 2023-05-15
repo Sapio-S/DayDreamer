@@ -421,7 +421,7 @@ gym:
   reward_head: {layers: 2, units: 16, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
   cont_head: {layers: 2, units: 16, act: elu, norm: layer, dist: binary, outscale: 0.1, inputs: [deter, stoch]}
   replay_chunk: 16
-  train.train_every: 1
+  train.train_every: 5
   train.train_fill: 100
   train.log_every: 1e3
   train.eval_every: 1e3

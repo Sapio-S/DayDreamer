@@ -32,10 +32,6 @@ class RSSM(nn.Module):
         self.category_size = config.rssm.stoch
         self.class_size = config.rssm.classes
 
-        # self.GRU_embed = nn.Sequential(
-        #     nn.Linear(self.stoch_size + self.action_size, self.deter_size),
-        #     nn.ELU()
-        # ).to(self.device)
         self.GRU_embed = build_model(
             config.rssm.gru_layers, self.stoch_size + self.action_size, self.deter_size, self.node_size
         ).to(self.device)
@@ -262,11 +258,7 @@ class WorldModel(nn.Module):
         # posterior = torch.concat([posterior.deter, posterior.stoch], dim=2)
 
         return data, posterior, metric
-        
-    # def _obs_loss(self, obs_dist, obs):
-    #     obs_loss = -torch.mean(obs_dist.log_prob(obs))
-    #     return obs_loss
-    
+
     def _kl_loss(self, prior, posterior, training=True):
         prior_dist = self.RSSM.get_dist(prior)
         post_dist = self.RSSM.get_dist(posterior)
@@ -278,34 +270,4 @@ class WorldModel(nn.Module):
         # scale
         kl_loss, mets = self.wmkl(kl_loss, update=training)
         return prior_dist, post_dist, kl_loss
-    
-    # def _reward_loss(self, reward_dist, rewards):
-    #     reward_loss = -torch.mean(reward_dist.log_prob(rewards))
-    #     return reward_loss
-    
-    # def _pcont_loss(self, pcont_dist, nonterms):
-    #     pcont_target = nonterms.float()
-    #     pcont_loss = -torch.mean(pcont_dist.log_prob(pcont_target))
-    #     return pcont_loss
-
-    # def save(self, cnt):
-    #     import wandb
-    #     state_dict = {}
-    #     cnt = 0
-    #     for model in self.models:
-    #         state_dict[cnt] = model.state_dict()
-    #         cnt += 1
-    #     torch.save(state_dict, wandb.run.dir + '/world_model'+str(cnt))
-
-    # def load(self):
-    #     print('loading...')
-    #     state_dict = torch.load("wandb/offline-run-20230408_085518-3rj27648/files/world_model500",
-    #         map_location=torch.device(self.device))
-    #     self.obs_encoder = self.obs_encoder.load_state_dict(state_dict[0])
-    #     self.RSSM = self.RSSM.load_state_dict(state_dict[1])
-    #     self.obs_decoder = self.obs_decoder.load_state_dict(state_dict[3])
-    #     self.reward_decoder = self.reward_decoder.load_state_dict(state_dict[2])
-    #     self.discount_decoder = self.discount_decoder.load_state_dict(state_dict[4])
-    #     self.models = [self.obs_encoder, self.RSSM, self.reward_decoder, self.obs_decoder, self.discount_decoder]
-    #     for model in self.models:
-    #         model.to(self.device)
+   

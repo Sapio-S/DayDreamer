@@ -145,6 +145,7 @@ class MLP(nn.Module):
         if self._dist['dist'] == 'mse':
             return dist_inputs
         if self._dist['dist'] == 'onehot':
+            # return dist_inputs
             return td.OneHotCategorical(logits=dist_inputs)  # td.independent.Independent(td.Normal(dist_inputs, 1), 1)
         if self._dist['dist'] == None:
             return dist_inputs
@@ -166,7 +167,7 @@ class MLP(nn.Module):
         if self._dist['dist'] == 'mse':
             return output
         if self._dist['dist'] == 'onehot': # TODO
-            return output
+            return output.sample()
         if self._dist['dist'] == None:
             return output
 

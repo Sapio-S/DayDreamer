@@ -12,3 +12,5 @@ log/
 wandb/
 test/
 model/
+DQN/
+SAC/
