@@ -5,9 +5,7 @@ import numpy as np
 import ruamel.yaml as yaml
 import torch
 from torch import nn
-# import wandb
 
-# from .world_model_test import WorldModel
 from .world_model import WorldModel
 from .actor_critic import ActorCritic
 from .utils import action_noise
@@ -18,7 +16,6 @@ class Agent(nn.Module):
     
     def __init__(self, obs_space, act_space, step, config):
         super().__init__()
-        # torch.set_default_dtype(torch.float32)
         self.config = config
         self.obs_space = obs_space
         self.act_space = act_space['action']
@@ -34,21 +31,6 @@ class Agent(nn.Module):
             self.world_model.RSSM._init_rssm_state(len(obs['is_first'])),
             torch.zeros((len(obs['is_first']),) + self.act_space.shape).to(self.device))
 
-        # TODO: for test
-        # Atari
-        # self.world_model.load_state_dict(torch.load('wandb/offline-run-20230417_063412-dgwgo25r/files/world_model')) # hidden=1024, actor-critic & world model
-        # self.world_model.load_state_dict(torch.load('wandb/offline-run-20230417_070628-3g098gkg/files/world_model')) # hidden=600, world model only
-        # self.world_model.load_state_dict(torch.load('wandb/offline-run-20230418_071157-cg8dhh2i/files/world_model')) # new structure, co-training, obs[:,:-1]
-        # self.world_model.load_state_dict(torch.load('wandb/offline-run-20230418_082353-ds4k10nr/files/world_model')) # new structure, co-training, obs[:,1:]
-        # self.world_model.load_state_dict(torch.load('/home/xyq/logdir/run7/test/270000_world_model'))
-        
-        # # gym
-        # self.world_model.load_state_dict(torch.load('/home/xyq/gym/run2/world_model'))
-        # self.world_model.load_state_dict(torch.load('/home/xyq/gym/Pendulum/world_model'))
-        # self.actor_critic.load_state_dict(torch.load('/home/xyq/gym/Pendulum/actor_critic'))
-        # self.world_model.load_state_dict(torch.load('/data/home/xyq/gym/CarCont/run1/world_model'))
-        # self.world_model.load_state_dict(torch.load('/home/eva_share/user_file/xyq/gym/cartpole/run3/world_model')) # eva4
-
     def policy(self, obs, state=None, mode='train'):
         with torch.no_grad():
             if state is None:
@@ -63,23 +45,13 @@ class Agent(nn.Module):
             noise = self.config.expl_noise
             action = self.actor_critic.actor.act(model_state, mode=mode)
             outs = {'action': action.cpu().detach().numpy()}
-            # if mode == 'eval':
-            #     noise = self.config.eval_noise
-            #     action, _ = self.actor_critic.actor(model_state)
-            #     # outs, task_state = self.task_behavior.policy(latent, task_state)
-            #     outs = {'action': action.cpu().detach().numpy()}
-            # elif mode == 'explore':
-            #     action, _ = self.actor_critic.actor(model_state)
-            #     # outs, expl_state = self.expl_behavior.policy(latent, expl_state)
-            #     outs = {'action': action.cpu().detach().numpy()}
-            #     # outs = {**outs, 'action': outs['action'].sample()}
-            # elif mode == 'train':
-            #     noise = self.config.eval_noise
-            #     action, _ = self.actor_critic.actor(model_state)
-            #     # outs, task_state = self.task_behavior.policy(latent, task_state)
-            #     outs = {'action': action.cpu().detach().numpy()}
-            # outs = {**outs, 'action': action_noise(
-            #     outs['action'], noise, self.act_space)}
+            if mode == 'eval':
+                noise = self.config.eval_noise
+            elif mode == 'train':
+                noise = self.config.eval_noise
+            action, _ = self.actor_critic.actor(model_state)
+            action = action_noise(action, noise, self.act_space)
+            outs = {'action': action.cpu().detach().numpy()}
             state = (latent, outs['action'])
             return outs, state
 
@@ -88,7 +60,6 @@ class Agent(nn.Module):
         metrics = {}
 
         # train world model
-
         state, wm_outs, m1 = self.world_model.train(data)
         context = {**data} #, **wm_outs}
         start = {}
@@ -118,14 +89,6 @@ class Agent(nn.Module):
             else:
                 value = value.to(torch.float)
         obs[key] = value
-
-        def symlog(x):
-            return torch.sign(x) * torch.log(1 + torch.abs(x))
-        reward_func = {
-            'off': nn.Identity, 'sign': torch.sign,
-            'tanh': torch.tanh, 'symlog': symlog,
-        }[self.config.transform_rewards]
-        # obs['reward'] = reward_func(obs['reward'])
         obs['cont'] = 1.0 - obs['is_terminal'].to(torch.float)
         return obs
 
@@ -146,5 +109,3 @@ class Agent(nn.Module):
     
     def load(self, values):
         pass
-        # self.world_model.load_state_dict(torch.load('wandb/offline-run-20230413_185649-ldsqfmzm/files/world_model'))
-        # self.actor_critic.load_state_dict(torch.load(path+"/actor_critic"))

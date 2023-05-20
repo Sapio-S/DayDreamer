@@ -4,8 +4,28 @@ import numpy as np
 import torch.nn as nn
 import torch.distributions as td
 import torch
-
 from .utils import build_model
+import torch.nn.functional as F
+
+def normal_tanh(x, min_std=0.03, max_std=1.0):
+    # Normal(tanh(x))
+    mean_, std_ = x.chunk(2, -1)
+    mean = torch.tanh(mean_)
+    std = (max_std - min_std) * torch.sigmoid(std_) + min_std
+    normal = td.normal.Normal(mean, std)
+    normal = td.independent.Independent(normal, 1)
+    return normal
+
+def tanh_normal(x):
+    # TanhTransform(Normal(5 tanh(x/5)))
+    mean_, std_ = x.chunk(2, -1)
+    mean = 5 * torch.tanh(mean_ / 5)  # clip tanh arg to (-5, 5)
+    std = F.softplus(std_) + 0.1  # min_std = 0.1
+    normal = td.normal.Normal(mean, std)
+    normal = td.independent.Independent(normal, 1)
+    tanh = td.TransformedDistribution(normal, [td.TanhTransform()])
+    tanh.entropy = normal.entropy  # HACK: need to implement correct tanh.entorpy (need Jacobian of TanhTransform?)
+    return tanh
 
 class MultiEncoder(nn.Module):
 
@@ -30,7 +50,7 @@ class MultiEncoder(nn.Module):
             self._cnn = ImageEncoder(cnn_depth, cnn_kernels, self.cnn_shapes, device, **kw)
             self.embed_size = self._cnn.test_shape()[-1]
         elif self.mlp_shapes:
-            self._mlp = MLP(self.mlp_shapes['image'][-1], mlp_layers, mlp_units, self.mlp_shapes, dist=None, **kw)
+            self._mlp = MLP(self.mlp_shapes['image'][-1], mlp_layers, mlp_units, self.mlp_shapes, dist=None, has_layer_norm=True, **kw)
             self.embed_size = mlp_units
 
     def forward(self, data):
@@ -77,7 +97,7 @@ class MultiDecoder(nn.Module):
             self._image_dist = image_dist
 
         elif self.mlp_shapes:
-            self._mlp = MLP(state_size, mlp_layers, mlp_units, self.mlp_shapes, output_shape=self.mlp_shapes['image'][-1], dist=None, **kw)
+            self._mlp = MLP(state_size, mlp_layers, mlp_units, self.mlp_shapes, output_shape=self.mlp_shapes['image'][-1], dist=image_dist, has_layer_norm=True, **kw)
 
     def forward(self, inputs):
         features = inputs
@@ -130,23 +150,34 @@ class MLP(nn.Module):
         distkeys = ('dist', 'outscale', 'minstd', 'maxstd', 'outnorm', 'unimix')
         self._dense = {k: v for k, v in kw.items() if k not in distkeys}
         self._dist = {k: v for k, v in kw.items() if k in distkeys}
-        self.model = build_model(
-            self._layers, input_shape, int(np.prod(self._output_shape)), self._units
-        )
+        if self._dist['dist'] == 'normal':
+            self.model = build_model(
+                self._layers, input_shape, int(np.prod(self._output_shape))*2, self._units
+            )
+        else:
+            self.model = build_model(
+                self._layers, input_shape, int(np.prod(self._output_shape)), self._units
+            )
 
-    def forward(self, input):
+    def forward(self, input, deterministic=False):
         dist_inputs = self.model(input)
         if self._dist['dist'] == 'normal':
-            return td.independent.Independent(td.Normal(dist_inputs, 1), 1)
+            if deterministic:
+                mean_, std_ = dist_inputs.chunk(2, -1)
+                mean = torch.tanh(mean_)
+                return mean
+            dist = normal_tanh(dist_inputs)
+            # dist = tanh_normal(dist_inputs)
+            return dist
         if self._dist['dist'] == 'binary':
             return td.independent.Independent(td.Bernoulli(logits=dist_inputs), 1)
         if self._dist['dist'] == 'symlog':
-            return td.independent.Independent(td.Normal(dist_inputs, 1), 1) # TODO
+            return dist_inputs
         if self._dist['dist'] == 'mse':
             return dist_inputs
         if self._dist['dist'] == 'onehot':
             # return dist_inputs
-            return td.OneHotCategorical(logits=dist_inputs)  # td.independent.Independent(td.Normal(dist_inputs, 1), 1)
+            return td.OneHotCategorical(logits=dist_inputs)
         if self._dist['dist'] == None:
             return dist_inputs
 
@@ -154,44 +185,41 @@ class MLP(nn.Module):
     
     @torch.no_grad()
     def test(self, input):
-        return self.model(input)
+        if self._dist['dist'] == 'symlog':
+            return symexp(self.model(input))
+        return self.model(input) # not suitable for binary
 
     def run(self, input):
+        # if self._dist['dist'] == 'normal': # should not be called, used for actor only
         output = self.forward(input)
-        if self._dist['dist'] == 'normal':
-            return output.mean
         if self._dist['dist'] == 'binary':
             return torch.round(output.base_dist.probs)
-        if self._dist['dist'] == 'symlog': # TODO
-            return output.mean
+        if self._dist['dist'] == 'symlog':
+            return symexp(output)
         if self._dist['dist'] == 'mse':
             return output
-        if self._dist['dist'] == 'onehot': # TODO
-            return output.sample()
+        # if self._dist['dist'] == 'onehot': # should not be called, used for actor only
+        #     return output.sample()
         if self._dist['dist'] == None:
             return output
 
         raise NotImplementedError(self._dist)
 
-    def train(self, input):
-        return self.model(input)
-
     def loss(self, dist, target, discount=None):
-        if self._dist['dist'] == 'normal':
-            if discount is not None:
-                # return -torch.sum(torch.dot(discount, dist.log_prob(target)))
-                return -torch.mean(discount*dist.log_prob(target).unsqueeze(-1))
-            return -torch.sum(dist.log_prob(target))
+        # if self._dist['dist'] == 'normal': # should not be called, used for actor only
         if self._dist['dist'] == 'binary':
-            return -torch.sum(dist.log_prob(target))
-        if self._dist['dist'] == 'symlog': # TODO
-            return -torch.sum(dist.log_prob(target))
+            return -torch.mean(dist.log_prob(target))
+        if self._dist['dist'] == 'symlog':
+            target = symlog(target)
+            if discount is not None:
+                return torch.mean((dist-target)**2 * discount)
+            return torch.mean((dist - target) ** 2)
         if self._dist['dist'] == 'mse':
             if discount is not None:
                 return torch.mean((dist-target)**2 * discount)
             return torch.mean((dist - target) ** 2)
-        if self._dist['dist'] == 'onehot': # TODO
-            return -torch.sum(dist.log_prob(target))
+        # if self._dist['dist'] == 'onehot': # should not be called, used for actor only
+        #     return -torch.sum(dist.log_prob(target))
         if self._dist['dist'] == None:
             return torch.sum((dist - target) ** 2)
 
@@ -281,3 +309,9 @@ def conv_out(h_in, padding, kernel_size, stride):
 
 def conv_out_shape(h_in, padding, kernel_size, stride):
     return tuple(conv_out(x, padding, kernel_size, stride) for x in h_in)
+
+def symlog(x):
+  return torch.sign(x) * torch.log(1 + torch.abs(x))
+
+def symexp(x):
+  return torch.sign(x) * (torch.exp(torch.abs(x)) - 1)

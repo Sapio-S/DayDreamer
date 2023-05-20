@@ -1,6 +1,7 @@
 import pathlib
 import sys
 import warnings
+import wandb
 
 warnings.filterwarnings('ignore', '.*box bound precision lowered.*')
 warnings.filterwarnings('ignore', '.*using stateful random seeds*')
@@ -51,7 +52,7 @@ def main(argv=None):
       embodied.logger.TerminalOutput(config.filter),
       embodied.logger.JSONLOutput(outdir, 'metrics.jsonl'),
       embodied.logger.JSONLOutput(outdir, 'scores.jsonl', 'episode/score'),
-      embodied.logger.TensorBoardOutput(outdir),
+      embodied.logger.WAndBOutput(),
   ], multiplier)
 
   cleanup = []
@@ -63,10 +64,16 @@ def main(argv=None):
     cleanup.append(env)
 
     if config.run == 'train':
+      wandb.init(project='dreamerv2_pytorch', config=config, name=config.task)
       replay = make_replay(config, logdir / 'episodes')
       embodied.run.train(agent, env, replay, logger, args)
 
+    elif config.run == 'test':
+      replay = make_replay(config, logdir / 'episodes')
+      embodied.run.test(agent, env, replay, logger, args)
+
     elif config.run == 'train_eval':
+      wandb.init(project='dreamerv2_pytorch', config=config, name=config.task)
       eval_env = embodied.envs.load_env(
           config.task, mode='eval', logdir=logdir, **config.env)
       replay = make_replay(config, logdir / 'episodes')
@@ -95,6 +102,7 @@ def main(argv=None):
         eval_replay = make_replay(config, config.eval_dir, is_eval=True)
       else:
         eval_replay = replay
+      # wandb.init(project='dreamerv2_pytorch', config=config)
       embodied.run.learning(agent, replay, eval_replay, logger, args)
 
     elif config.run == 'acting':

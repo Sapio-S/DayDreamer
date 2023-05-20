@@ -109,7 +109,6 @@ class FreezeParameters:
 def action_noise(action, amount, act_space):
     if amount == 0:
         return action
-    amount = amount.to(action.dtype)
     if act_space.discrete:
         probs = amount / action.shape[-1] + (1 - amount) * action
         sample = torch.distributions.OneHotCategorical(probs=probs).sample()
@@ -117,20 +116,65 @@ def action_noise(action, amount, act_space):
     else:
         return torch.clamp(torch.distributions.Normal(action, amount).sample(), -1, 1)
 
-def build_model(num_layer, input_size, output_size, hidden_size):
+def build_model(num_layer, input_size, output_size, hidden_size, has_layer_norm=True):
     if num_layer == 1:
         model = [nn.Linear(input_size, output_size)]
         # model += [nn.LayerNorm(output_size)]                # TODO: check if needed
         # model += [nn.ELU()]                                 # TODO: check if needed
     else:
         model = [nn.Linear(input_size, hidden_size)]
-        model += [nn.LayerNorm(hidden_size)]
+        if has_layer_norm:
+            model += [nn.LayerNorm(hidden_size)]
         model += [nn.ELU()]
         for i in range(num_layer-2):
             model += [nn.Linear(hidden_size,hidden_size)]
-            model += [nn.LayerNorm(hidden_size)]
+            if has_layer_norm:
+                model += [nn.LayerNorm(hidden_size)]
             model += [nn.ELU()]
         model += [nn.Linear(hidden_size, int(np.prod(output_size)))]
         # model += [nn.LayerNorm(int(np.prod(output_size)))]  # TODO: check if needed
         # model += [nn.ELU()]                                 # TODO: check if needed
     return nn.Sequential(*model)
+
+class Normalize:
+
+    def __init__(
+        self, impl='mean_std', decay=0.99, max=1e8, vareps=0.0, stdeps=0.0):
+        self._impl = impl
+        self._decay = decay
+        self._max = max
+        self._stdeps = stdeps
+        self._vareps = vareps
+        self._mean = 0
+        self._sqrs = 0
+        self._step = 0
+
+    def __call__(self, values, update=True):
+        update and self.update(values)
+        return self.transform(values)
+
+    def update(self, values):
+        x = values
+        m = self._decay
+        self._step += 1
+        self._mean = m * self._mean + (1 - m) * x.mean().item()
+        self._sqrs = m * self._sqrs + (1 - m) * (x ** 2).mean().item()
+
+    def transform(self, values):
+        correction = 1 - self._decay ** self._step
+        mean = self._mean / correction
+        var = (self._sqrs / correction) - mean ** 2
+        if self._max > 0.0:
+            scale = (max(var, 1 / self._max ** 2 + self._vareps) + self._stdeps) ** 0.5
+        else:
+            scale = (var + self._vareps) ** 0.5 + self._stdeps
+        if self._impl == 'off':
+            pass
+        elif self._impl == 'mean_std':
+            values -= mean
+            values *= scale
+        elif self._impl == 'std':
+            values *= scale
+        else:
+            raise NotImplementedError(self._impl)
+        return values

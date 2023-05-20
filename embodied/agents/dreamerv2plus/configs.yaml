@@ -4,6 +4,7 @@ defaults:
 
   # Trainer
   logdir: /dev/null
+  experiment_name: train_wm_only
   run: train_fixed_eval
   seed: 0
   task: dummy_discrete
@@ -14,7 +15,7 @@ defaults:
   replay_fixed: {length: 0, prio_starts: 0.0, prio_ends: 1.0, sync: 0, minlen: 0}
   replay_consec: {randomize: False, sync: 0}
   replay_prio: {prio_starts: 0.0, prio_ends: 1.0, sync: 0, fraction: 0.1, softmax: False, temp: 1.0, constant: 0.0, exponent: 0.5}
-  tf: {jit: True, platform: gpu, precision: float16, debug_nans: False, logical_gpus: 0, dist_dataset: False, dist_policy: False, tensorfloat: True, soft_placement: False, growth: True}
+  tf: {jit: True, platform: cpu, precision: float16, debug_nans: False, logical_gpus: 0, dist_dataset: False, dist_policy: False, tensorfloat: True, soft_placement: False, growth: True}
   eval_dir: ''
   filter: '.*'
   tbtt: 0
@@ -42,7 +43,7 @@ defaults:
   expl_behavior: None
   transform_rewards: off
   batch_size: 32
-  data_loader: tfdata
+  data_loader: embodied
   expl_noise: 0.0
   eval_noise: 0.0
   priority: reward_loss
@@ -398,3 +399,31 @@ debug:
   .*\.units: 64
   .*\.wd: 0.0
   tf: {platform: gpu, jit: False}
+
+gym:
+  task: gym_CartPole-v1
+  grad_heads: [decoder, reward, cont]
+  rssm: {units: 16, deter: 16, stoch: 4, classes: 4, act: elu, norm: layer, initial: learned2, unimix: 0.01, prior_layers: 2, post_layers: 1, gru_layers: 1, unroll: True}
+  encoder: {mlp_keys: '.*', cnn_keys: '$^', act: elu, norm: layer, mlp_layers: 2, mlp_units: 16, }
+  decoder: {mlp_keys: '.*', cnn_keys: '$^', act: elu, norm: layer, mlp_layers: 2, mlp_units: 16, image_dist: mse, inputs: [deter, stoch]}
+  reward_head: {layers: 2, units: 16, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
+  cont_head: {layers: 2, units: 16, act: elu, norm: layer, dist: binary, outscale: 0.1, inputs: [deter, stoch]}
+  replay_chunk: 16
+  train.train_every: 5
+  train.train_fill: 100
+  train.log_every: 1e3
+  train.eval_every: 1e3
+  actor: {layers: 2, units: 16, act: elu, norm: layer, minstd: 0.03, maxstd: 1.0, outscale: 0.1, unimix: 0.01, inputs: [deter, stoch]}
+  critic: {layers: 2, units: 16, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
+  train.steps: 5e5
+  model_opt.lr: 1e-3
+  actent_norm: False
+  actent.impl: fixed
+  # advnorm.impl: off
+  # expl_behavior: Explore
+  # replay: prio
+  # task_behavior: Explore # DisagWhen Explore Greedy Random
+  # expl_behavior: Explore
+  # expl_noise: 2.0
+  # expl_rewards.extr: 1.0 # from v function
+  # expl_rewards.disag: 0.1 # from disagreement

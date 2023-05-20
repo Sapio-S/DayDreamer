@@ -83,16 +83,12 @@ class RSSM(nn.Module):
             rssm_state = self.rssm_imagine(action, rssm_state)
             next_rssm_states.append(rssm_state)
             action_entropy.append(action_dist.entropy())
-            if self.config.actor_grad_disc == 'reinforce':
-                imag_log_probs.append(action_dist.log_prob(action))
-                
-        # batch???
+            imag_log_probs.append(action_dist.log_prob(action))
+
         next_rssm_states = self.rssm_stack_states(next_rssm_states, dim=0)
         action_entropy = torch.stack(action_entropy, dim=0)
-        if self.config.actor_grad_disc == 'reinforce':
-            imag_log_probs = torch.stack(imag_log_probs, dim=0)
-        else:
-            imag_log_probs = None
+        imag_log_probs = torch.stack(imag_log_probs, dim=0)
+        
         return next_rssm_states, imag_log_probs, action_entropy
     
     def get_model_state(self, rssm_state):
@@ -249,13 +245,6 @@ class WorldModel(nn.Module):
             "kl_l": kl_loss.item(),
             "pcont_l": pcont_loss.item(),
         }
-
-        # update data
-        # outs = {}
-        # if 'key' in data:
-        #     criteria = {**data, **{"prior":prior, "post":posterior }}
-        #     outs.update(key=data['key'], priority=criteria[self.config.priority])
-        # posterior = torch.concat([posterior.deter, posterior.stoch], dim=2)
 
         return data, posterior, metric
 

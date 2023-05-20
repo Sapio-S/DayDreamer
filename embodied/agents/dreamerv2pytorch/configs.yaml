@@ -427,7 +427,7 @@ gym:
   train.eval_every: 1e3
   actor: {layers: 2, units: 16, act: elu, norm: layer, minstd: 0.03, maxstd: 1.0, outscale: 0.1, unimix: 0.01, inputs: [deter, stoch]}
   critic: {layers: 2, units: 16, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
-  actor_grad_disc: dynamics
   train.steps: 5e5
   model_opt.lr: 1e-3
+  # expl_noise: 0.1
   # replay: prio
