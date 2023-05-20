@@ -1,3 +1,11 @@
+# DayDreamer in pytorch
+
+usage:
+```
+python embodied/agents/dreamerv2pytorch/train.py --configs gym --run train_eval --task gym_Pendulum-v0 --logdir ~/log_dir
+python embodied/agents/dreamerv2pytorch/train.py --configs gym --run train_eval --task gym_CartPole-v0 --logdir ~/log_dir
+```
+
 # DayDreamer: World Models for Physical Robot Learning
 
 Official implementation of the [DayDreamer][paper] algorithm in TensorFlow 2.
