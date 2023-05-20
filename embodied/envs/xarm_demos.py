@@ -65,7 +65,7 @@ def collect_xarm_demos():
     logger = embodied.Logger(embodied.Counter(), [
         embodied.logger.TerminalOutput(),
         embodied.logger.JSONLOutput(args.outdir, 'metrics.jsonl'),
-        embodied.logger.TensorBoardOutput(args.outdir),
+        embodied.logger.WAndBOutput(args.outdir),
     ], multiplier=1)
 
     def on_episode(ep, _):

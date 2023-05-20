@@ -53,7 +53,7 @@ def train_eval(
     logger.add(metrics, prefix=f'{mode}_episode')
     logger.add(logs, prefix=f'{mode}_logs')
     logger.add(replay.stats, prefix='replay')
-    logger.write()
+    # logger.write()
 
   driver_train = embodied.Driver(train_env)
   driver_train.on_episode(lambda ep, worker: per_episode(ep, mode='train'))

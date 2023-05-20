@@ -15,7 +15,7 @@ defaults:
   replay_fixed: {length: 0, prio_starts: 0.0, prio_ends: 1.0, sync: 0, minlen: 0}
   replay_consec: {randomize: False, sync: 0}
   replay_prio: {prio_starts: 0.0, prio_ends: 1.0, sync: 0, fraction: 0.1, softmax: False, temp: 1.0, constant: 0.0, exponent: 0.5}
-  tf: {jit: True, platform: cpu, precision: float16, debug_nans: False, logical_gpus: 0, dist_dataset: False, dist_policy: False, tensorfloat: True, soft_placement: False, growth: True}
+  torch: {platform: gpu, precision: float, debug_nans: False, logical_gpus: 0, dist_dataset: False, dist_policy: False, tensorfloat: True, soft_placement: False, growth: True}
   eval_dir: ''
   filter: '.*'
   tbtt: 0
@@ -128,7 +128,7 @@ minecraft:
   env: {amount: 16, parallel: thread}
   encoder: {mlp_keys: 'inventory|equipped|reward|is_terminal', cnn_keys: 'image'}
   decoder: {mlp_keys: 'inventory|equipped', cnn_keys: 'image'}
-  tf.precision: float32
+  tf.precision: float
   train.eval_fill: 1e5
   train.train_every: 64
 
@@ -142,18 +142,30 @@ dmlab:
 atari:
 
   task: atari_pong
-  encoder: {mlp_keys: '$^', cnn_keys: 'image'}
-  decoder: {mlp_keys: '$^', cnn_keys: 'image'}
+  encoder: {mlp_keys: '$^', cnn_keys: 'image', cnn_depth: 48,}
+  decoder: {mlp_keys: '$^', cnn_keys: 'image', cnn_depth: 48,}
   env: {gray: True, repeat: 4, amount: 16}
   train.steps: 5e7
   train.eval_every: 2.5e5
+  rssm: {units: 600, deter: 600}
+  model_opt.lr: 2e-4
+  actor_opt.lr: 4e-5
+  critic_opt.lr: 1e-4
+  actent.scale: 1e-3
+  discount: 0.999
+  loss_scales.kl: 0.1
+  loss_scales.cont: 5.0
+  reward_head.dist: mse
+  critic.dist: mse
+  reward_head.layers: 1
+  cont_head.layers: 1
 
 atari100k:
 
   task: atari_pong
   run: train_eval
   train: {steps: 2e5, eval_every: 1e5, eval_eps: 10}
-  tf.precision: float32
+  tf.precision: float
   env: {gray: True, repeat: 4}
   env.sticky: False
   encoder: {mlp_keys: '$^', cnn_keys: 'image'}
@@ -369,7 +381,7 @@ small:
     train_fill: 100
     eval_fill: 100
     train_every: 16
-  tf.precision: float32
+  tf.precision: float
   replay_chunk: 16
   rssm.deter: 128
   rssm.units: 128
@@ -398,7 +410,7 @@ debug:
   .*\.layers: 2
   .*\.units: 64
   .*\.wd: 0.0
-  tf: {platform: gpu, jit: False}
+  torch: {platform: gpu}
 
 gym:
   task: gym_CartPole-v1
@@ -417,13 +429,5 @@ gym:
   critic: {layers: 2, units: 16, act: elu, norm: layer, dist: mse, outscale: 0.1, inputs: [deter, stoch]}
   train.steps: 5e5
   model_opt.lr: 1e-3
-  actent_norm: False
-  actent.impl: fixed
-  # advnorm.impl: off
-  # expl_behavior: Explore
+  # expl_noise: 0.1
   # replay: prio
-  # task_behavior: Explore # DisagWhen Explore Greedy Random
-  # expl_behavior: Explore
-  # expl_noise: 2.0
-  # expl_rewards.extr: 1.0 # from v function
-  # expl_rewards.disag: 0.1 # from disagreement

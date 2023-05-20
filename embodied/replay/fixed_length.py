@@ -46,7 +46,7 @@ class FixedLength(embodied.Replay):
   def add_traj(self, traj):
     length = len(next(iter(traj.values())))
     if length < self.chunk or length < self.minlen:
-      print(f'Skipping short trajectory of length {length}.')
+      # print(f'Skipping short trajectory of length {length}.')
       return
     traj = {k: v for k, v in traj.items() if not k.startswith('log_')}
     traj = {k: embodied.convert(v) for k, v in traj.items()}

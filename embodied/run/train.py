@@ -28,7 +28,7 @@ def train(agent, env, replay, logger, args):
     metrics = {}
     length = len(ep['reward']) - 1
     score = float(ep['reward'].astype(np.float64).sum())
-    print(f'Episode has {length} steps and return {score:.1f}.')
+    # print(f'Episode has {length} steps and return {score:.1f}.')
     metrics['length'] = length
     metrics['score'] = score
     metrics['reward_rate'] = (ep['reward'] - ep['reward'].min() >= 0.1).mean()
@@ -49,7 +49,7 @@ def train(agent, env, replay, logger, args):
     logger.add(metrics, prefix='episode')
     logger.add(logs, prefix='logs')
     logger.add(replay.stats, prefix='replay')
-    logger.write()
+    # logger.write()
 
   driver = embodied.Driver(env)
   driver.on_episode(lambda ep, worker: per_episode(ep))
@@ -66,7 +66,7 @@ def train(agent, env, replay, logger, args):
   state = [None]  # To be writable from train step function below.
   assert args.pretrain > 0  # At least one step to initialize variables.
   for _ in range(args.pretrain):
-    _, state[0], _ = agent.train(next(dataset), state[0])
+    _, state[0], met = agent.train(next(dataset), state[0])
 
   metrics = collections.defaultdict(list)
   batch = [None]

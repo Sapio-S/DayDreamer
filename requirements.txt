@@ -13,3 +13,4 @@ spherov2
 bleak
 imageio
 dm-sonnet
+wandb
