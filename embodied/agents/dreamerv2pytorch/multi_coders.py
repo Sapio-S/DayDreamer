@@ -7,15 +7,23 @@ import torch
 from .utils import build_model
 import torch.nn.functional as F
 
-def normal_tanh(x, min_std=0.03, max_std=1.0):
+# def normal_tanh(x, min_std=0.03, max_std=1.0):
+#     # Normal(tanh(x))
+#     mean_, std_ = x.chunk(2, -1)
+#     mean = torch.tanh(mean_)
+#     std = (max_std - min_std) * torch.sigmoid(std_) + min_std
+#     normal = td.normal.Normal(mean, std)
+#     normal = td.independent.Independent(normal, 1)
+#     return normal
+
+def normal_tanh(mean, std, min_std=0.03, max_std=1.0):
     # Normal(tanh(x))
-    mean_, std_ = x.chunk(2, -1)
-    mean = torch.tanh(mean_)
-    std = (max_std - min_std) * torch.sigmoid(std_) + min_std
+    mean = torch.tanh(mean)
+    std = (max_std - min_std) * torch.sigmoid(std) + min_std
     normal = td.normal.Normal(mean, std)
     normal = td.independent.Independent(normal, 1)
     return normal
-
+    
 def tanh_normal(x):
     # TanhTransform(Normal(5 tanh(x/5)))
     mean_, std_ = x.chunk(2, -1)
@@ -26,6 +34,13 @@ def tanh_normal(x):
     tanh = td.TransformedDistribution(normal, [td.TanhTransform()])
     tanh.entropy = normal.entropy  # HACK: need to implement correct tanh.entorpy (need Jacobian of TanhTransform?)
     return tanh
+
+def normal(x, min_std=0.03, max_std=1.0):
+    mean, std_ = x.chunk(2, -1)
+    std = (max_std - min_std) * torch.sigmoid(std_) + min_std
+    normal = td.normal.Normal(mean, std)
+    normal = td.independent.Independent(normal, 1)
+    return normal
 
 class MultiEncoder(nn.Module):
 
@@ -134,7 +149,7 @@ class MultiDecoder(nn.Module):
 
 class MLP(nn.Module):
 
-    def __init__(self, input_shape=None, layers=4, units=512, inputs=['tensor'], dims=None, mlp_shape=None, output_shape=None, **kw):
+    def __init__(self, input_shape=None, layers=4, units=512, inputs=['tensor'], dims=None, mlp_shape=None, output_shape=None, has_layer_norm=True, **kw):
         assert input_shape is None or isinstance(input_shape, (int, tuple, dict)), input_shape
         super().__init__()
         if input_shape is None:
@@ -152,22 +167,25 @@ class MLP(nn.Module):
         self._dist = {k: v for k, v in kw.items() if k in distkeys}
         if self._dist['dist'] == 'normal':
             self.model = build_model(
-                self._layers, input_shape, int(np.prod(self._output_shape))*2, self._units
+                self._layers, input_shape, int(np.prod(self._output_shape)), self._units, has_layer_norm
             )
+            self.std = nn.Linear(input_shape, int(np.prod(self._output_shape)))
         else:
             self.model = build_model(
-                self._layers, input_shape, int(np.prod(self._output_shape)), self._units
+                self._layers, input_shape, int(np.prod(self._output_shape)), self._units, has_layer_norm
             )
 
     def forward(self, input, deterministic=False):
         dist_inputs = self.model(input)
         if self._dist['dist'] == 'normal':
             if deterministic:
-                mean_, std_ = dist_inputs.chunk(2, -1)
-                mean = torch.tanh(mean_)
+                # mean_, std_ = dist_inputs.chunk(2, -1)
+                mean = torch.tanh(dist_inputs)
                 return mean
-            dist = normal_tanh(dist_inputs)
+            std = self.std(input)
+            dist = normal_tanh(dist_inputs, std)
             # dist = tanh_normal(dist_inputs)
+            # dist = normal(dist_inputs)
             return dist
         if self._dist['dist'] == 'binary':
             return td.independent.Independent(td.Bernoulli(logits=dist_inputs), 1)
@@ -176,6 +194,8 @@ class MLP(nn.Module):
         if self._dist['dist'] == 'mse':
             return dist_inputs
         if self._dist['dist'] == 'onehot':
+            if deterministic:
+                return td.OneHotCategorical(logits=dist_inputs).sample()
             # return dist_inputs
             return td.OneHotCategorical(logits=dist_inputs)
         if self._dist['dist'] == None:

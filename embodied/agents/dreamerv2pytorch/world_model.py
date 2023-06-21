@@ -83,7 +83,7 @@ class RSSM(nn.Module):
             rssm_state = self.rssm_imagine(action, rssm_state)
             next_rssm_states.append(rssm_state)
             action_entropy.append(action_dist.entropy())
-            imag_log_probs.append(action_dist.log_prob(action))
+            imag_log_probs.append(action_dist.log_prob(action.detach()))
 
         next_rssm_states = self.rssm_stack_states(next_rssm_states, dim=0)
         action_entropy = torch.stack(action_entropy, dim=0)

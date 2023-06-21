@@ -28,11 +28,11 @@ class ActorCritic(nn.Module):
         self.actor.optim.zero_grad()
         self.critic.optim.zero_grad()
 
-        actor_loss.backward()
         value_loss.backward()
+        actor_loss.backward()
 
-        grad_norm_actor = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 100) # self.config.advnorm.max)
-        grad_norm_value = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.config.retnorm.max)
+        grad_norm_actor = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.actor_opt.clip)
+        grad_norm_value = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.config.critic_opt.clip)
 
         self.actor.optim.step()
         self.critic.optim.step()
@@ -55,8 +55,8 @@ class ActorCritic(nn.Module):
             discount_arr = self.config.discount * self.world_model.discount_decoder.run(imag_modelstates)
         
         # # v1
-        # with FreezeParameters([self.critic.net]):
-        #     imag_value = self.critic.net.run(imag_modelstates)
+        # with FreezeParameters([self.critic.target_net]):
+        #     imag_value = self.critic.target_net.run(imag_modelstates)
         # imag_value[1:] -=  self.config.actent.scale * policy_entropy[1:].unsqueeze(-1)
         # lambda_returns = cal_returns(imag_reward[:-1], imag_value[:-1], discount_arr[:-1], bootstrap=imag_value[-1], lambda_=self.config.return_lambda)
         # weight = torch.cumprod(torch.cat([torch.ones_like(discount_arr[:1]), discount_arr[:-2]], 0), 0).detach()
@@ -66,11 +66,19 @@ class ActorCritic(nn.Module):
         # v2
         with FreezeParameters([self.critic.target_net]):
             imag_value = self.critic.target_net.run(imag_modelstates)
+        # imag_value[1:] -= 0.003 * imag_log_prob[1:].unsqueeze(-1)
         discount_arr = torch.cat([torch.ones_like(discount_arr[:1]), discount_arr[1:]])
-        weight = torch.cumprod(discount_arr[:-1], 0)
+        weight = torch.cumprod(discount_arr[:-1], 0).detach()
 
         lambda_returns = compute_return(imag_reward[:-1], imag_value[:-1], discount_arr[:-1], bootstrap=imag_value[-1], lambda_=self.config.return_lambda)
         value_loss = self.critic._value_loss(imag_modelstates, weight, lambda_returns) 
+        # print(weight.requires_grad)
+        # print(imag_value.requires_grad)
+        # print(imag_reward.requires_grad)
+        # print(imag_log_prob.requires_grad)
+        # print(policy_entropy.requires_grad)
+        # print('done')
+        # exit(0)
         actor_loss, actor_info = self.actor._actor_loss(weight, lambda_returns, policy_entropy, imag_log_prob, imag_value)
 
         mean_target = torch.mean(lambda_returns, dim=1)
@@ -95,7 +103,7 @@ class Actor(nn.Module):
         self.act_space = act_space
         self.config = config
         if not act_space.discrete:
-            self.model = MLP(input_shape=state_size, output_shape=act_space.shape[0], **self.config.actor, dist=config.actor_dist_cont)
+            self.model = MLP(input_shape=state_size, output_shape=act_space.shape[0], **self.config.actor, dist=config.actor_dist_cont, has_layer_norm=False)
         else:
             self.model = MLP(input_shape=state_size, output_shape=act_space.shape[0], **self.config.actor, dist=config.actor_dist_disc)
         self.optim = optim.Adam(self.model.parameters(), config.actor_opt.lr, eps=config.actor_opt.eps)
@@ -119,9 +127,13 @@ class Actor(nn.Module):
     @torch.no_grad()
     def act(self, state, mode='train'):
         if mode == 'eval':
+            # print(state[0])
             action = self.model(state, deterministic=True)
+            # print('eval',action[0])
         else:
+            # print(state[0])
             action, _ = self.forward(state)
+            # print('train',action[0])
         return action
 
     def _actor_loss(self, weight, lambda_returns, policy_entropy, imag_log_prob, imag_value):
@@ -131,12 +143,15 @@ class Actor(nn.Module):
             objective = imag_log_prob[1:].unsqueeze(-1) * advantage
             actor_loss = -torch.mean(torch.mean(weight * (objective + policy_entropy * self.actent_scale), 0)) 
         elif self.grad == 'backprop':
-            lambda_returns = self.retnorm(weight * lambda_returns) # misplaced weight?
-            imag_value = self.retnorm(imag_value[:-1], update=False)
-            objective = lambda_returns - imag_value
-            objective = self.scorenorm(objective)
-            score = self.advnorm(torch.mean(objective, -1))
-            actor_loss = -torch.mean(score + policy_entropy[1:] * self.actent_scale)
+            policy_entropy = policy_entropy[1:].unsqueeze(-1)
+            # lambda_returns = self.retnorm(weight * lambda_returns) # misplaced weight?
+            # imag_value = self.retnorm(imag_value[:-1], update=False)
+            objective = lambda_returns # - imag_value[:-1]
+            # objective = self.scorenorm(objective)
+            # score = self.advnorm(torch.mean(objective, -1))
+            # actor_loss = -torch.mean(score + policy_entropy[1:] * self.actent_scale)
+            # actor_loss = -torch.mean(torch.mean(weight * (lambda_returns), 0))
+            actor_loss = torch.mean(torch.mean(weight * (objective  + policy_entropy * self.actent_scale), 0))
         else:
             raise NotImplementedError
 

@@ -7,6 +7,7 @@ import torch
 from torch import nn
 
 from .world_model import WorldModel
+# from .world_model_test import WorldModel
 from .actor_critic import ActorCritic
 from .utils import action_noise
 
@@ -30,6 +31,10 @@ class Agent(nn.Module):
         self.initial_policy_state = lambda obs: (
             self.world_model.RSSM._init_rssm_state(len(obs['is_first'])),
             torch.zeros((len(obs['is_first']),) + self.act_space.shape).to(self.device))
+        
+        # path = '/data/home/xyq/gym/Pendulum/torch_run1/'
+        # self.actor_critic.load_state_dict(torch.load(path+'actor_critic'))
+        # self.world_model.load_state_dict(torch.load(path+'world_model'))
 
     def policy(self, obs, state=None, mode='train'):
         with torch.no_grad():
